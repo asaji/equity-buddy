@@ -42,15 +42,54 @@ def _looks_like_auth_error(exc: Exception) -> bool:
     return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
-def _cookies_file_valid() -> bool:
-    """Check that the cookies file exists and contains parseable JSON with content."""
+def _normalize_cookies_file() -> bool:
+    """Ensure cookies file exists and is in twikit's {name: value} dict format.
+
+    Cookie-Editor exports a list of full cookie objects — convert on first load.
+    Returns True if the file is valid and ready to use.
+    """
     if not os.path.exists(COOKIES_PATH):
         return False
     try:
         with open(COOKIES_PATH) as f:
             data = json.load(f)
-        return bool(data)
-    except Exception:
+
+        if isinstance(data, dict) and data:
+            return True  # already in twikit format
+
+        if isinstance(data, list) and data:
+            # Browser export format — convert to {name: value}
+            cookie_dict = {}
+            for cookie in data:
+                if not isinstance(cookie, dict) or "name" not in cookie:
+                    continue
+                domain = cookie.get("domain", "")
+                if any(d in domain for d in ("twitter.com", "x.com", "t.co")):
+                    cookie_dict[cookie["name"]] = cookie["value"]
+
+            if not cookie_dict:
+                # No domain match — just take all cookies (some exports omit domain)
+                cookie_dict = {
+                    c["name"]: c["value"]
+                    for c in data
+                    if isinstance(c, dict) and "name" in c
+                }
+
+            if not cookie_dict:
+                logger.error("Cookie file contained no usable cookies")
+                return False
+
+            with open(COOKIES_PATH, "w") as f:
+                json.dump(cookie_dict, f, indent=2)
+            logger.info(
+                "Converted browser cookie export to twikit format (%d cookies)", len(cookie_dict)
+            )
+            return True
+
+        logger.error("Cookie file is empty or unrecognized format")
+        return False
+    except Exception as e:
+        logger.error("Failed to read/normalize cookie file: %s", e)
         return False
 
 
@@ -77,7 +116,7 @@ async def _get_twitter_client():
         logger.error("twikit not installed")
         return None
 
-    if not _cookies_file_valid():
+    if not _normalize_cookies_file():
         logger.warning(
             "Twitter cookies not found or invalid at %s — "
             "export cookies from your browser and place them there, "
