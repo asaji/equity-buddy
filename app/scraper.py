@@ -1,5 +1,5 @@
-import asyncio
 import hashlib
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 
 COOKIES_PATH = "/app/cookies/twitter_cookies.json"
 
+# Errors that indicate cookies are expired/invalid rather than transient
+_AUTH_ERROR_PATTERNS = (
+    "32",           # Could not authenticate
+    "135",          # Timestamp out of bounds
+    "326",          # Account locked
+    "AuthError",
+    "Unauthorized",
+    "Could not authenticate",
+)
+
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
@@ -25,6 +35,23 @@ def _is_recent(dt: Optional[datetime], hours: int = 24) -> bool:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt >= datetime.now(timezone.utc) - timedelta(hours=hours)
+
+
+def _looks_like_auth_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return any(p in msg for p in _AUTH_ERROR_PATTERNS)
+
+
+def _cookies_file_valid() -> bool:
+    """Check that the cookies file exists and contains parseable JSON with content."""
+    if not os.path.exists(COOKIES_PATH):
+        return False
+    try:
+        with open(COOKIES_PATH) as f:
+            data = json.load(f)
+        return bool(data)
+    except Exception:
+        return False
 
 
 # --- Twitter ---
@@ -46,18 +73,26 @@ async def auth_twitter(username: str, password: str, email: str) -> bool:
 async def _get_twitter_client():
     try:
         from twikit import Client
-        client = Client("en-US")
-        if os.path.exists(COOKIES_PATH):
-            client.load_cookies(COOKIES_PATH)
-            return client
-        else:
-            logger.warning(
-                "Twitter cookies not found at %s — navigate to /auth/twitter to authenticate",
-                COOKIES_PATH,
-            )
-            return None
     except ImportError:
         logger.error("twikit not installed")
+        return None
+
+    if not _cookies_file_valid():
+        logger.warning(
+            "Twitter cookies not found or invalid at %s — "
+            "export cookies from your browser and place them there, "
+            "or navigate to /auth/twitter to authenticate via username/password",
+            COOKIES_PATH,
+        )
+        return None
+
+    client = Client("en-US")
+    try:
+        client.load_cookies(COOKIES_PATH)
+        logger.debug("Twitter cookies loaded from %s", COOKIES_PATH)
+        return client
+    except Exception as e:
+        logger.error("Failed to load Twitter cookies: %s", e)
         return None
 
 
@@ -96,6 +131,13 @@ async def scrape_twitter(handles: list[str]) -> int:
                 except Exception as e:
                     logger.warning("Error processing tweet from @%s: %s", handle, e)
         except Exception as e:
+            if _looks_like_auth_error(e):
+                logger.error(
+                    "Twitter auth error for @%s — cookies may be expired. "
+                    "Re-export from your browser to %s and restart the worker. Error: %s",
+                    handle, COOKIES_PATH, e,
+                )
+                break  # No point continuing — all handles will fail
             logger.error("Error fetching tweets for @%s: %s", handle, e)
 
     logger.info("Scraped %d new tweets from %d handles", total, len(handles))
