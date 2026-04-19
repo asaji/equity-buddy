@@ -67,5 +67,4 @@ def _warn_missing(cfg: dict) -> None:
         logger.warning("Pushover user_key not set — alerts disabled")
     if not cfg["email"].get("smtp_host"):
         logger.warning("Email SMTP not configured — digest emails disabled")
-    if not cfg["accounts"]["twitter"] and not cfg["accounts"]["substack"]:
-        logger.warning("No Twitter or Substack accounts configured — nothing to scrape")
+    # Accounts are stored in the DB, not config.yaml — no warning needed here

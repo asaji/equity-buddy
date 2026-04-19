@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 DB_PATH = os.environ.get("DB_PATH", "/app/data/equitybuddy.db")
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type TEXT NOT NULL,
+    value TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    UNIQUE(source_type, value)
+);
+
 CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_type TEXT NOT NULL,
@@ -386,11 +394,28 @@ def get_stats() -> dict:
     return {"ideas_today": ideas_today, "alerts_sent": alerts_sent, "sources_active": sources_active}
 
 
-# --- Config-based watchlist management ---
+# --- Account management (stored in DB so both containers share it) ---
 
-def get_twitter_accounts() -> list[str]:
+def get_accounts(source_type: str) -> list[str]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT DISTINCT author FROM posts WHERE source_type='twitter' ORDER BY author"
+            "SELECT value FROM accounts WHERE source_type = ? ORDER BY added_at",
+            (source_type,),
         ).fetchall()
     return [r[0] for r in rows]
+
+
+def add_account(source_type: str, value: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO accounts (source_type, value, added_at) VALUES (?, ?, ?)",
+            (source_type, value, _now()),
+        )
+
+
+def remove_account(source_type: str, value: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM accounts WHERE source_type = ? AND value = ?",
+            (source_type, value),
+        )

@@ -81,88 +81,49 @@ async def alerts_log(request: Request):
 
 # --- Watchlist (sources) ---
 
-@app.get("/watchlist", response_class=HTMLResponse)
-async def watchlist(request: Request):
-    cfg = get_config()
-    twitter = cfg["accounts"].get("twitter", [])
-    substack = cfg["accounts"].get("substack", [])
+def _watchlist_response(request: Request):
     return templates.TemplateResponse("watchlist.html", {
         "request": request,
-        "twitter_accounts": twitter,
-        "substack_urls": substack,
+        "twitter_accounts": db.get_accounts("twitter"),
+        "substack_urls": db.get_accounts("substack"),
+    }, headers={"HX-Reswap": "outerHTML", "HX-Retarget": "#watchlist-content"})
+
+
+@app.get("/watchlist", response_class=HTMLResponse)
+async def watchlist(request: Request):
+    return templates.TemplateResponse("watchlist.html", {
+        "request": request,
+        "twitter_accounts": db.get_accounts("twitter"),
+        "substack_urls": db.get_accounts("substack"),
     })
-
-
-def _save_accounts(twitter: list, substack: list) -> None:
-    import yaml
-    cfg = get_config()
-    cfg["accounts"]["twitter"] = twitter
-    cfg["accounts"]["substack"] = substack
-    config_path = os.environ.get("CONFIG_PATH", "/app/config.yaml")
-    if os.path.exists(config_path) and os.access(config_path, os.W_OK):
-        with open(config_path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False)
-        load_config()
-    else:
-        logger.warning("Config file not writable — account changes stored in memory only")
 
 
 @app.post("/watchlist/twitter/add", response_class=HTMLResponse)
 async def add_twitter(request: Request, handle: str = Form(...)):
-    cfg = get_config()
-    twitter = list(cfg["accounts"].get("twitter", []))
     handle = handle.lstrip("@").strip()
-    if handle and handle not in twitter:
-        twitter.append(handle)
-        _save_accounts(twitter, cfg["accounts"].get("substack", []))
-    cfg = get_config()
-    return templates.TemplateResponse("watchlist.html", {
-        "request": request,
-        "twitter_accounts": cfg["accounts"].get("twitter", []),
-        "substack_urls": cfg["accounts"].get("substack", []),
-    }, headers={"HX-Reswap": "outerHTML", "HX-Retarget": "#watchlist-content"})
+    if handle:
+        db.add_account("twitter", handle)
+    return _watchlist_response(request)
 
 
 @app.post("/watchlist/twitter/remove", response_class=HTMLResponse)
 async def remove_twitter(request: Request, handle: str = Form(...)):
-    cfg = get_config()
-    twitter = [h for h in cfg["accounts"].get("twitter", []) if h != handle.lstrip("@")]
-    _save_accounts(twitter, cfg["accounts"].get("substack", []))
-    cfg = get_config()
-    return templates.TemplateResponse("watchlist.html", {
-        "request": request,
-        "twitter_accounts": cfg["accounts"].get("twitter", []),
-        "substack_urls": cfg["accounts"].get("substack", []),
-    }, headers={"HX-Reswap": "outerHTML", "HX-Retarget": "#watchlist-content"})
+    db.remove_account("twitter", handle.lstrip("@").strip())
+    return _watchlist_response(request)
 
 
 @app.post("/watchlist/substack/add", response_class=HTMLResponse)
 async def add_substack(request: Request, url: str = Form(...)):
-    cfg = get_config()
-    substack = list(cfg["accounts"].get("substack", []))
     url = url.strip()
-    if url and url not in substack:
-        substack.append(url)
-        _save_accounts(cfg["accounts"].get("twitter", []), substack)
-    cfg = get_config()
-    return templates.TemplateResponse("watchlist.html", {
-        "request": request,
-        "twitter_accounts": cfg["accounts"].get("twitter", []),
-        "substack_urls": cfg["accounts"].get("substack", []),
-    }, headers={"HX-Reswap": "outerHTML", "HX-Retarget": "#watchlist-content"})
+    if url:
+        db.add_account("substack", url)
+    return _watchlist_response(request)
 
 
 @app.post("/watchlist/substack/remove", response_class=HTMLResponse)
 async def remove_substack(request: Request, url: str = Form(...)):
-    cfg = get_config()
-    substack = [u for u in cfg["accounts"].get("substack", []) if u != url]
-    _save_accounts(cfg["accounts"].get("twitter", []), substack)
-    cfg = get_config()
-    return templates.TemplateResponse("watchlist.html", {
-        "request": request,
-        "twitter_accounts": cfg["accounts"].get("twitter", []),
-        "substack_urls": cfg["accounts"].get("substack", []),
-    }, headers={"HX-Reswap": "outerHTML", "HX-Retarget": "#watchlist-content"})
+    db.remove_account("substack", url.strip())
+    return _watchlist_response(request)
 
 
 # --- Watchlist Stocks ---

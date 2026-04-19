@@ -8,7 +8,7 @@ from typing import Optional
 import feedparser
 
 from . import database as db
-from .config import get as get_config
+from .config import get as get_config  # still used for cookie path env override
 
 logger = logging.getLogger(__name__)
 
@@ -190,9 +190,12 @@ def scrape_substack(rss_urls: list[str]) -> int:
 
 
 async def run_scrape() -> dict:
-    cfg = get_config()
-    twitter_handles = cfg["accounts"].get("twitter", [])
-    substack_urls = cfg["accounts"].get("substack", [])
+    twitter_handles = db.get_accounts("twitter")
+    substack_urls = db.get_accounts("substack")
+
+    if not twitter_handles and not substack_urls:
+        logger.warning("No accounts configured — add Twitter handles or Substack URLs via the web UI")
+        return {"twitter": 0, "substack": 0}
 
     twitter_count = await scrape_twitter(twitter_handles)
     substack_count = scrape_substack(substack_urls)
