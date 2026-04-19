@@ -42,55 +42,41 @@ def _looks_like_auth_error(exc: Exception) -> bool:
     return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
-def _normalize_cookies_file() -> bool:
-    """Ensure cookies file exists and is in twikit's {name: value} dict format.
+def _read_cookies_as_dict() -> Optional[dict]:
+    """Read the cookie file and return a {name: value} dict regardless of source format.
 
-    Cookie-Editor exports a list of full cookie objects — convert on first load.
-    Returns True if the file is valid and ready to use.
+    Handles both Cookie-Editor browser export (list of objects) and twikit
+    native format (dict or list of [name, value] pairs).
     """
     if not os.path.exists(COOKIES_PATH):
-        return False
+        return None
     try:
         with open(COOKIES_PATH) as f:
-            data = json.load(f)
+            raw = json.load(f)
 
-        if isinstance(data, dict) and data:
-            return True  # already in twikit format
+        if isinstance(raw, dict) and raw:
+            return raw
 
-        if isinstance(data, list) and data:
-            # Browser export format — convert to {name: value}
-            cookie_dict = {}
-            for cookie in data:
-                if not isinstance(cookie, dict) or "name" not in cookie:
-                    continue
-                domain = cookie.get("domain", "")
-                if any(d in domain for d in ("twitter.com", "x.com", "t.co")):
-                    cookie_dict[cookie["name"]] = cookie["value"]
-
-            if not cookie_dict:
-                # No domain match — just take all cookies (some exports omit domain)
-                cookie_dict = {
+        if isinstance(raw, list) and raw:
+            first = raw[0]
+            if isinstance(first, dict) and "name" in first:
+                # Cookie-Editor format: [{name, value, domain, ...}, ...]
+                cookies = {
                     c["name"]: c["value"]
-                    for c in data
-                    if isinstance(c, dict) and "name" in c
+                    for c in raw
+                    if isinstance(c, dict) and "name" in c and "value" in c
                 }
+                logger.info("Parsed browser cookie export (%d cookies)", len(cookies))
+                return cookies or None
+            if isinstance(first, (list, tuple)) and len(first) == 2:
+                # twikit list-of-pairs format: [[name, value], ...]
+                return dict(raw)
 
-            if not cookie_dict:
-                logger.error("Cookie file contained no usable cookies")
-                return False
-
-            with open(COOKIES_PATH, "w") as f:
-                json.dump(cookie_dict, f, indent=2)
-            logger.info(
-                "Converted browser cookie export to twikit format (%d cookies)", len(cookie_dict)
-            )
-            return True
-
-        logger.error("Cookie file is empty or unrecognized format")
-        return False
+        logger.error("Unrecognized cookie file format (type=%s)", type(raw).__name__)
+        return None
     except Exception as e:
-        logger.error("Failed to read/normalize cookie file: %s", e)
-        return False
+        logger.error("Failed to read cookie file: %s", e)
+        return None
 
 
 # --- Twitter ---
@@ -116,22 +102,40 @@ async def _get_twitter_client():
         logger.error("twikit not installed")
         return None
 
-    if not _normalize_cookies_file():
+    cookies = _read_cookies_as_dict()
+    if not cookies:
         logger.warning(
             "Twitter cookies not found or invalid at %s — "
-            "export cookies from your browser and place them there, "
-            "or navigate to /auth/twitter to authenticate via username/password",
+            "export cookies from your browser (Cookie-Editor extension → Export as JSON) "
+            "and save them there, or use /auth/twitter",
             COOKIES_PATH,
         )
         return None
 
+    if "auth_token" not in cookies:
+        logger.warning("auth_token not found in cookies — scraping will likely fail")
+
     client = Client("en-US")
     try:
-        client.load_cookies(COOKIES_PATH)
-        logger.debug("Twitter cookies loaded from %s", COOKIES_PATH)
+        # Bypass client.load_cookies() — set directly on the underlying httpx client
+        # to avoid format-version mismatches
+        http = getattr(client, "http", None) or getattr(client, "_http", None)
+        if http is not None:
+            http.cookies.update(cookies)
+        else:
+            # Last resort: let twikit try with the dict written to a temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as tmp:
+                json.dump(cookies, tmp)
+                tmp_path = tmp.name
+            client.load_cookies(tmp_path)
+            os.unlink(tmp_path)
+
+        logger.info("Twitter cookies loaded (%d cookies, auth_token=%s)",
+                    len(cookies), "auth_token" in cookies)
         return client
     except Exception as e:
-        logger.error("Failed to load Twitter cookies: %s", e)
+        logger.error("Failed to apply Twitter cookies: %s", e)
         return None
 
 
