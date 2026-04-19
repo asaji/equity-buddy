@@ -32,13 +32,7 @@ def _defaults() -> dict:
     return {
         "anthropic_api_key": "",
         "pushover": {"user_key": "", "api_token": ""},
-        "email": {
-            "smtp_host": "",
-            "smtp_port": 587,
-            "smtp_user": "",
-            "smtp_password": "",
-            "to_address": "",
-        },
+        "base_url": "",
         "schedule": {
             "scrape_interval_hours": 2,
             "digest_time": "07:00",
@@ -64,7 +58,5 @@ def _warn_missing(cfg: dict) -> None:
     if not cfg.get("anthropic_api_key"):
         logger.warning("anthropic_api_key is not set — extraction and enrichment disabled")
     if not cfg["pushover"].get("user_key"):
-        logger.warning("Pushover user_key not set — alerts disabled")
-    if not cfg["email"].get("smtp_host"):
-        logger.warning("Email SMTP not configured — digest emails disabled")
+        logger.warning("Pushover not configured — alerts and digest notifications disabled")
     # Accounts are stored in the DB, not config.yaml — no warning needed here

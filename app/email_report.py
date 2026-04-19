@@ -1,19 +1,20 @@
+import json
 import logging
-import smtplib
 import time
 from datetime import date
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Optional
 
 import anthropic
+import requests
 
 from . import database as db
 from .config import get as get_config
 
 logger = logging.getLogger(__name__)
 
-DIGEST_PROMPT = """Generate an HTML email digest for stock investment ideas. Use inline CSS only (no external stylesheets or <style> blocks with class selectors — use style="" attributes directly on elements).
+PUSHOVER_API = "https://api.pushover.net/1/messages.json"
+
+REPORT_PROMPT = """Generate a full HTML report for a stock investment ideas digest. Use inline CSS only (no external stylesheets — use style="" attributes directly on elements).
 
 Date: {date}
 New ideas today: {idea_count}
@@ -26,14 +27,12 @@ Requirements:
 - Dark background (#0f172a), light text (#e2e8f0)
 - Header section with date and counts
 - Ideas grouped by conviction: High → Medium → Low
-- Per idea show: ticker (bold, large), source+link, sentiment badge (green=bullish, red=bearish), freshness signal pill (green=early, yellow=in_motion, red=may_have_moved), thesis, research summary, fundamentals row (MCap, 3m change, PE ratio), "Track This" link to http://localhost:7842/watchlist-stocks (replace localhost with actual host if known)
-- Professional, clean layout with good spacing
-- Subject line at the very top of your response as: SUBJECT: <subject here>
-- Then the full HTML starting with <!DOCTYPE html>"""
+- Per idea: ticker (bold), source+link, sentiment badge, freshness signal pill, thesis, research summary, key fundamentals (MCap, 3m change, PE)
+- Professional, clean layout
+- Return only the HTML starting with <!DOCTYPE html>, no preamble"""
 
 
-def _call_claude_with_retry(client: anthropic.Anthropic, prompt: str,
-                             max_retries: int = 3) -> Optional[str]:
+def _call_claude(client: anthropic.Anthropic, prompt: str, max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
@@ -44,58 +43,72 @@ def _call_claude_with_retry(client: anthropic.Anthropic, prompt: str,
             return response.content[0].text
         except anthropic.RateLimitError as e:
             wait = 2 ** attempt * 5
-            logger.warning("Rate limit hit for digest, retrying in %ds: %s", wait, e)
+            logger.warning("Rate limit, retrying in %ds: %s", wait, e)
             time.sleep(wait)
         except anthropic.APIError as e:
             wait = 2 ** attempt * 2
-            logger.warning("API error for digest, retrying in %ds: %s", wait, e)
+            logger.warning("API error, retrying in %ds: %s", wait, e)
             time.sleep(wait)
     return None
 
 
-def _send_email(subject: str, html: str) -> bool:
+def _send_pushover_digest(subject: str, summary: str) -> bool:
     cfg = get_config()
-    smtp_host = cfg["email"].get("smtp_host", "")
-    if not smtp_host:
-        logger.warning("Email not configured — skipping send")
+    user_key = cfg["pushover"].get("user_key", "")
+    api_token = cfg["pushover"].get("api_token", "")
+
+    if not user_key or not api_token:
+        logger.warning("Pushover not configured — skipping digest notification")
         return False
 
-    smtp_port = cfg["email"].get("smtp_port", 587)
-    smtp_user = cfg["email"].get("smtp_user", "")
-    smtp_password = cfg["email"].get("smtp_password", "")
-    to_address = cfg["email"].get("to_address", "")
-
-    if not to_address:
-        logger.warning("No to_address configured — skipping email send")
-        return False
+    base_url = cfg.get("base_url", "")
+    payload = {
+        "token": api_token,
+        "user": user_key,
+        "title": subject[:250],
+        "message": summary[:1024],
+        "priority": 0,
+    }
+    if base_url:
+        payload["url"] = f"{base_url.rstrip('/')}/reports"
+        payload["url_title"] = "View Full Report"
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = smtp_user
-        msg["To"] = to_address
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            if smtp_user and smtp_password:
-                server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, to_address, msg.as_string())
-
-        logger.info("Digest email sent to %s", to_address)
+        resp = requests.post(PUSHOVER_API, data=payload, timeout=10)
+        resp.raise_for_status()
+        logger.info("Digest Pushover notification sent")
         return True
     except Exception as e:
-        logger.error("Email send failed: %s", e)
+        logger.error("Pushover digest send failed: %s", e)
         return False
+
+
+def _build_pushover_summary(ideas: list[dict], stats: dict, today: date) -> str:
+    high = [i for i in ideas if i.get("conviction") == "high"]
+    med  = [i for i in ideas if i.get("conviction") == "medium"]
+    low  = [i for i in ideas if i.get("conviction") == "low"]
+
+    lines = [f"{today.strftime('%b %d')} · {len(ideas)} ideas · {stats['sources_active']} sources"]
+
+    if high:
+        tickers = ", ".join(
+            f"${i['ticker']} ({'↑' if i.get('sentiment') == 'bullish' else '↓'})"
+            for i in high[:5]
+        )
+        lines.append(f"HIGH: {tickers}")
+
+    if med:
+        tickers = ", ".join(f"${i['ticker']}" for i in med[:4])
+        lines.append(f"MED: {tickers}")
+
+    if low:
+        lines.append(f"LOW: {len(low)} idea{'s' if len(low) != 1 else ''}")
+
+    return "\n".join(lines)
 
 
 def generate_and_send_digest() -> Optional[int]:
     cfg = get_config()
-    if not cfg.get("anthropic_api_key"):
-        logger.warning("No Anthropic API key — skipping digest generation")
-        return None
-
     today = date.today()
     ideas = db.get_ideas_today()
     stats = db.get_stats()
@@ -104,36 +117,38 @@ def generate_and_send_digest() -> Optional[int]:
         logger.info("No ideas today — skipping digest")
         return None
 
+    subject = f"EquityBuddy — {today.strftime('%Y-%m-%d')} — {len(ideas)} new ideas"
+
+    # Always send a Pushover summary (no Claude needed for this part)
+    summary = _build_pushover_summary(ideas, stats, today)
+    _send_pushover_digest(subject, summary)
+
+    # Generate full HTML report with Claude if API key is available
+    api_key = cfg.get("anthropic_api_key", "")
+    if not api_key:
+        logger.warning("No Anthropic API key — storing plain text report only")
+        html = f"<html><body><pre>{subject}\n\n{summary}</pre></body></html>"
+        report_id = db.insert_report(subject=subject, html_content=html)
+        return report_id
+
     ideas_with_enrichment = []
     for idea in ideas:
         enrichment = db.get_enrichment_today(idea["ticker"]) or {}
         ideas_with_enrichment.append({**idea, "enrichment": enrichment})
 
-    import json
-    ideas_json = json.dumps(ideas_with_enrichment, indent=2, default=str)
-
-    prompt = DIGEST_PROMPT.format(
+    prompt = REPORT_PROMPT.format(
         date=today.strftime("%B %d, %Y"),
         idea_count=len(ideas),
         source_count=stats["sources_active"],
-        ideas_json=ideas_json[:12000],
+        ideas_json=json.dumps(ideas_with_enrichment, indent=2, default=str)[:12000],
     )
 
-    client = anthropic.Anthropic(api_key=cfg["anthropic_api_key"])
-    raw = _call_claude_with_retry(client, prompt)
-    if not raw:
-        logger.error("Failed to generate digest")
-        return None
-
-    subject = f"EquityBuddy — {today.strftime('%Y-%m-%d')} — {len(ideas)} new ideas"
-    html = raw
-
-    if raw.startswith("SUBJECT:"):
-        lines = raw.split("\n", 1)
-        subject = lines[0].replace("SUBJECT:", "").strip()
-        html = lines[1].strip() if len(lines) > 1 else raw
+    client = anthropic.Anthropic(api_key=api_key)
+    html = _call_claude(client, prompt)
+    if not html:
+        logger.error("Failed to generate HTML report")
+        html = f"<html><body><pre>{subject}\n\n{summary}</pre></body></html>"
 
     report_id = db.insert_report(subject=subject, html_content=html)
-    _send_email(subject, html)
-    logger.info("Digest generated (report id=%d)", report_id)
+    logger.info("Digest report stored (id=%d)", report_id)
     return report_id

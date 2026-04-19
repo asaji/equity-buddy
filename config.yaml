@@ -4,12 +4,9 @@ pushover:
   user_key: ""
   api_token: ""
 
-email:
-  smtp_host: ""
-  smtp_port: 587
-  smtp_user: ""
-  smtp_password: ""
-  to_address: ""
+# Optional: base URL of the web UI used for deep links in Pushover notifications
+# Example: http://192.168.1.100:7842
+base_url: ""
 
 schedule:
   scrape_interval_hours: 2

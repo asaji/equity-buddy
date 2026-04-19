@@ -56,8 +56,8 @@
         <p class="text-slate-200">{{ '✓ configured' if cfg.pushover.user_key else '✗ not set' }}</p>
       </div>
       <div>
-        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Email SMTP</p>
-        <p class="text-slate-200">{{ '✓ ' + cfg.email.smtp_host if cfg.email.smtp_host else '✗ not set' }}</p>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Web UI Base URL</p>
+        <p class="text-slate-200">{{ cfg.base_url if cfg.base_url else '— not set (Pushover links disabled)' }}</p>
       </div>
       <div class="pt-4 border-t border-slate-700">
         <button
