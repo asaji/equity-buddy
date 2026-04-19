@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">Dashboard</h1>
+  <button
+    hx-post="/run-now"
+    hx-target="#run-result"
+    hx-swap="innerHTML"
+    class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm font-medium">
+    Run Now
+  </button>
+</div>
+
+<div id="run-result" class="mb-4"></div>
+
+<!-- Stats bar -->
+<div class="grid grid-cols-3 gap-4 mb-8">
+  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Ideas Today</p>
+    <p class="text-3xl font-bold text-emerald-400">{{ stats.ideas_today }}</p>
+  </div>
+  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Alerts Sent</p>
+    <p class="text-3xl font-bold text-amber-400">{{ stats.alerts_sent }}</p>
+  </div>
+  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Sources Active</p>
+    <p class="text-3xl font-bold text-sky-400">{{ stats.sources_active }}</p>
+  </div>
+</div>
+
+{% if ideas %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+      <tr>
+        <th class="px-4 py-3 text-left">Ticker</th>
+        <th class="px-4 py-3 text-left">Source</th>
+        <th class="px-4 py-3 text-left">Sentiment</th>
+        <th class="px-4 py-3 text-left">Signal</th>
+        <th class="px-4 py-3 text-left">Conviction</th>
+        <th class="px-4 py-3 text-left">Thesis</th>
+        <th class="px-4 py-3 text-left">Track</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-700">
+      {% for idea in ideas %}
+      {% set enr = enrichments.get(idea.ticker, {}) %}
+      <tr class="hover:bg-slate-750 transition-colors">
+        <td class="px-4 py-3 font-bold text-white text-base">{{ idea.ticker }}</td>
+        <td class="px-4 py-3">
+          <a href="{{ idea.url }}" target="_blank"
+             class="text-sky-400 hover:text-sky-300 text-xs">
+            @{{ idea.author }}
+            <span class="text-slate-500 ml-1">{{ idea.source_type }}</span>
+          </a>
+        </td>
+        <td class="px-4 py-3">
+          {% if idea.sentiment == 'bullish' %}
+          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs font-medium">bullish</span>
+          {% else %}
+          <span class="bg-red-900/50 text-red-400 border border-red-700 px-2 py-0.5 rounded text-xs font-medium">bearish</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if enr.freshness_signal == 'early' %}
+          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs">early</span>
+          {% elif enr.freshness_signal == 'may_have_moved' %}
+          <span class="bg-red-900/50 text-red-400 border border-red-700 px-2 py-0.5 rounded text-xs">moved</span>
+          {% elif enr.freshness_signal %}
+          <span class="bg-amber-900/50 text-amber-400 border border-amber-700 px-2 py-0.5 rounded text-xs">in motion</span>
+          {% else %}
+          <span class="text-slate-600 text-xs">—</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          {% if idea.conviction == 'high' %}
+          <span class="text-emerald-400 font-semibold text-xs">HIGH</span>
+          {% elif idea.conviction == 'medium' %}
+          <span class="text-amber-400 font-semibold text-xs">MED</span>
+          {% else %}
+          <span class="text-slate-400 text-xs">low</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-slate-300 max-w-sm">
+          <p class="text-xs leading-relaxed">{{ idea.thesis }}</p>
+          {% if enr.current_price %}
+          <p class="text-slate-500 text-xs mt-1">
+            ${{ "%.2f"|format(enr.current_price) }}
+            {% if enr.pct_change_3m is not none %}
+            · 3m: <span class="{{ 'text-emerald-400' if enr.pct_change_3m > 0 else 'text-red-400' }}">{{ "%+.1f"|format(enr.pct_change_3m) }}%</span>
+            {% endif %}
+            {% if enr.market_cap %}· MCap: ${{ "%.1f"|format(enr.market_cap / 1e9) }}b{% endif %}
+          </p>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          <form hx-post="/watchlist-stocks/add" hx-target="#watchlist-stocks-content" hx-swap="outerHTML">
+            <input type="hidden" name="ticker" value="{{ idea.ticker }}" />
+            <input type="hidden" name="idea_id" value="{{ idea.id }}" />
+            <button type="submit"
+              class="text-xs bg-slate-700 hover:bg-emerald-700 border border-slate-600 hover:border-emerald-600 text-slate-300 hover:text-white px-2 py-1 rounded transition-colors">
+              + Track
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
+  <p class="text-slate-400 text-lg mb-2">No ideas yet today</p>
+  <p class="text-slate-500 text-sm">Add Twitter accounts and Substack feeds in <a href="/watchlist" class="text-emerald-400 hover:underline">Sources</a>, then click Run Now or wait for the next scheduled scrape.</p>
+</div>
+{% endif %}
+
+{% endblock %}

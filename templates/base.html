@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EquityBuddy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="bg-slate-900 text-slate-200 min-h-screen font-sans">
+
+  <nav class="bg-slate-800 border-b border-slate-700 px-6 py-3 flex items-center gap-6">
+    <a href="/" class="text-lg font-bold text-emerald-400 hover:text-emerald-300">EquityBuddy</a>
+    <a href="/" class="text-sm text-slate-300 hover:text-white">Dashboard</a>
+    <a href="/reports" class="text-sm text-slate-300 hover:text-white">Reports</a>
+    <a href="/alerts" class="text-sm text-slate-300 hover:text-white">Alerts</a>
+    <a href="/watchlist" class="text-sm text-slate-300 hover:text-white">Sources</a>
+    <a href="/watchlist-stocks" class="text-sm text-slate-300 hover:text-white">Performance</a>
+    <a href="/settings" class="text-sm text-slate-300 hover:text-white ml-auto">Settings</a>
+  </nav>
+
+  <main class="p-6">
+    {% block content %}
+
+    {% if page == 'settings' %}
+    <h1 class="text-2xl font-bold mb-6">Settings</h1>
+    <div class="bg-slate-800 rounded-lg p-6 space-y-4 max-w-2xl">
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Scrape Interval</p>
+        <p class="text-slate-200">Every {{ cfg.schedule.scrape_interval_hours }} hours</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Daily Digest Time</p>
+        <p class="text-slate-200">{{ cfg.schedule.digest_time }} ({{ cfg.schedule.timezone }})</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Conviction Alert Threshold</p>
+        <p class="text-slate-200">{{ cfg.conviction_alert_threshold }}</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Gain Alert Thresholds</p>
+        <p class="text-slate-200">{{ cfg.watchlist_alerts.gain_thresholds | join(', ') }}%</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Loss Alert Threshold</p>
+        <p class="text-slate-200">{{ cfg.watchlist_alerts.loss_threshold }}%</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Anthropic API Key</p>
+        <p class="text-slate-200">{{ '✓ configured' if cfg.anthropic_api_key else '✗ not set' }}</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Pushover</p>
+        <p class="text-slate-200">{{ '✓ configured' if cfg.pushover.user_key else '✗ not set' }}</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Email SMTP</p>
+        <p class="text-slate-200">{{ '✓ ' + cfg.email.smtp_host if cfg.email.smtp_host else '✗ not set' }}</p>
+      </div>
+      <div class="pt-4 border-t border-slate-700">
+        <button
+          hx-post="/run-now"
+          hx-target="#run-result"
+          hx-swap="innerHTML"
+          class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm font-medium">
+          Run Cycle Now
+        </button>
+        <div id="run-result" class="mt-3"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if page == 'auth_twitter' %}
+    <h1 class="text-2xl font-bold mb-6">Twitter Authentication</h1>
+    <div class="bg-slate-800 rounded-lg p-6 max-w-md">
+      <p class="text-slate-400 text-sm mb-4">
+        Enter your Twitter/X credentials to generate session cookies. This is required for scraping.
+        Credentials are used only for the initial auth and are not stored.
+      </p>
+      <form hx-post="/auth/twitter" hx-target="#auth-result" hx-swap="innerHTML" class="space-y-4">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Username</label>
+          <input name="username" type="text" required placeholder="@handle"
+            class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Email</label>
+          <input name="email" type="email" required placeholder="you@example.com"
+            class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Password</label>
+          <input name="password" type="password" required
+            class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
+        </div>
+        <button type="submit"
+          class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded text-sm font-medium">
+          Authenticate
+        </button>
+      </form>
+      <div id="auth-result" class="mt-4"></div>
+    </div>
+    {% endif %}
+
+    {% endblock %}
+  </main>
+</body>
+</html>

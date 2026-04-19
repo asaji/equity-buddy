@@ -1,0 +1,27 @@
+anthropic_api_key: ""
+
+pushover:
+  user_key: ""
+  api_token: ""
+
+email:
+  smtp_host: ""
+  smtp_port: 587
+  smtp_user: ""
+  smtp_password: ""
+  to_address: ""
+
+schedule:
+  scrape_interval_hours: 2
+  digest_time: "07:00"
+  timezone: "America/Chicago"
+
+conviction_alert_threshold: "high"
+
+watchlist_alerts:
+  gain_thresholds: [20, 50, 100]
+  loss_threshold: -20
+
+accounts:
+  twitter: []
+  substack: []

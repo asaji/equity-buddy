@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-bold mb-6">Alert Log</h1>
+
+{% if alerts %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+      <tr>
+        <th class="px-4 py-3 text-left">Time</th>
+        <th class="px-4 py-3 text-left">Type</th>
+        <th class="px-4 py-3 text-left">Ticker</th>
+        <th class="px-4 py-3 text-left">Message</th>
+        <th class="px-4 py-3 text-left">Track</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-700">
+      {% for alert in alerts %}
+      <tr class="hover:bg-slate-750 transition-colors">
+        <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+          {{ alert.sent_at[:16].replace('T', ' ') }}
+        </td>
+        <td class="px-4 py-3">
+          {% if alert.alert_type == 'idea' %}
+          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs">idea</span>
+          {% else %}
+          <span class="bg-amber-900/50 text-amber-400 border border-amber-700 px-2 py-0.5 rounded text-xs">price</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 font-bold text-white">{{ alert.ticker }}</td>
+        <td class="px-4 py-3 text-slate-300 text-xs max-w-md">
+          <p class="whitespace-pre-wrap leading-relaxed">{{ alert.message }}</p>
+        </td>
+        <td class="px-4 py-3">
+          <form hx-post="/watchlist-stocks/add" hx-target="#watchlist-stocks-content" hx-swap="outerHTML">
+            <input type="hidden" name="ticker" value="{{ alert.ticker }}" />
+            {% if alert.idea_id %}
+            <input type="hidden" name="idea_id" value="{{ alert.idea_id }}" />
+            {% endif %}
+            <button type="submit"
+              class="text-xs bg-slate-700 hover:bg-emerald-700 border border-slate-600 hover:border-emerald-600 text-slate-300 hover:text-white px-2 py-1 rounded transition-colors">
+              + Track
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
+  <p class="text-slate-400 text-lg mb-2">No alerts yet</p>
+  <p class="text-slate-500 text-sm">Alerts fire when high-conviction ideas are found or watchlist price milestones are crossed.</p>
+</div>
+{% endif %}
+
+{% endblock %}

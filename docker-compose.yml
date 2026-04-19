@@ -1,0 +1,48 @@
+# EquityBuddy — Docker Compose for Unraid (Docker Compose Manager plugin)
+#
+# DEPLOY ON UNRAID:
+# 1. Install "Docker Compose Manager" plugin from Community Applications
+# 2. Create host directories:
+#      mkdir -p /mnt/user/appdata/equitybuddy/cookies
+# 3. Copy config.yaml to /mnt/user/appdata/equitybuddy/config.yaml
+#    and fill in your API keys
+# 4. In Docker Compose Manager, paste this file or point to its path
+# 5. Click "Compose Up"
+# 6. After first start, navigate to http://<UNRAID-IP>:7842/auth/twitter
+#    to complete Twitter authentication (saves cookies — no docker exec needed)
+#
+# PUID/PGID: set to match your Unraid user (default 99/100 for nobody)
+
+services:
+  worker:
+    build: .
+    container_name: equitybuddy-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+    volumes:
+      - equitybuddy-data:/app/data
+      - /mnt/user/appdata/equitybuddy/config.yaml:/app/config.yaml:ro
+      - /mnt/user/appdata/equitybuddy/cookies:/app/cookies
+    depends_on:
+      - web
+
+  web:
+    build: .
+    container_name: equitybuddy-web
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7842"]
+    environment:
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
+    ports:
+      - "0.0.0.0:7842:7842"
+    volumes:
+      - equitybuddy-data:/app/data
+      - /mnt/user/appdata/equitybuddy/config.yaml:/app/config.yaml:ro
+      - /mnt/user/appdata/equitybuddy/cookies:/app/cookies
+
+volumes:
+  equitybuddy-data:

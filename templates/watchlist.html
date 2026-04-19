@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-bold mb-6">Sources</h1>
+
+<div id="watchlist-content" class="grid grid-cols-2 gap-6">
+
+  <!-- Twitter -->
+  <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
+    <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+      <span class="text-sky-400">𝕏</span> Twitter / X Accounts
+    </h2>
+
+    <form hx-post="/watchlist/twitter/add"
+          hx-target="#watchlist-content"
+          hx-swap="outerHTML"
+          class="flex gap-2 mb-4">
+      <input name="handle" type="text" placeholder="@handle or handle"
+        class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
+      <button type="submit"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded text-sm font-medium">
+        Add
+      </button>
+    </form>
+
+    {% if twitter_accounts %}
+    <ul class="space-y-2">
+      {% for handle in twitter_accounts %}
+      <li class="flex items-center justify-between bg-slate-900 rounded px-3 py-2">
+        <a href="https://x.com/{{ handle }}" target="_blank"
+           class="text-sm text-sky-400 hover:text-sky-300">@{{ handle }}</a>
+        <form hx-post="/watchlist/twitter/remove"
+              hx-target="#watchlist-content"
+              hx-swap="outerHTML">
+          <input type="hidden" name="handle" value="{{ handle }}" />
+          <button type="submit"
+            class="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-red-900/30">
+            Remove
+          </button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-slate-500 text-sm">No Twitter accounts configured yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Substack -->
+  <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
+    <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
+      <span class="text-orange-400">◎</span> Substack RSS Feeds
+    </h2>
+
+    <form hx-post="/watchlist/substack/add"
+          hx-target="#watchlist-content"
+          hx-swap="outerHTML"
+          class="flex gap-2 mb-4">
+      <input name="url" type="url" placeholder="https://author.substack.com/feed"
+        class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
+      <button type="submit"
+        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded text-sm font-medium">
+        Add
+      </button>
+    </form>
+
+    {% if substack_urls %}
+    <ul class="space-y-2">
+      {% for url in substack_urls %}
+      <li class="flex items-center justify-between bg-slate-900 rounded px-3 py-2">
+        <a href="{{ url }}" target="_blank"
+           class="text-sm text-orange-400 hover:text-orange-300 truncate max-w-xs">{{ url }}</a>
+        <form hx-post="/watchlist/substack/remove"
+              hx-target="#watchlist-content"
+              hx-swap="outerHTML">
+          <input type="hidden" name="url" value="{{ url }}" />
+          <button type="submit"
+            class="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-red-900/30 ml-2 shrink-0">
+            Remove
+          </button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-slate-500 text-sm">No Substack feeds configured yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<div class="mt-6 bg-slate-800 rounded-lg border border-slate-700 p-4">
+  <p class="text-xs text-slate-400">
+    <span class="text-amber-400 font-medium">Note:</span>
+    Changes are saved to <code class="text-slate-300">/app/config.yaml</code>.
+    If the config file is read-only, changes apply for this session only.
+    Twitter requires authentication — visit
+    <a href="/auth/twitter" class="text-emerald-400 hover:underline">/auth/twitter</a>
+    if you haven't set up cookies yet.
+  </p>
+</div>
+
+{% endblock %}

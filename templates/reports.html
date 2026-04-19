@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 class="text-2xl font-bold mb-6">Daily Digests</h1>
+
+{% if reports %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+      <tr>
+        <th class="px-4 py-3 text-left">Date</th>
+        <th class="px-4 py-3 text-left">Subject</th>
+        <th class="px-4 py-3 text-left">View</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-700">
+      {% for report in reports %}
+      <tr class="hover:bg-slate-750 transition-colors">
+        <td class="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+          {{ report.generated_at[:10] }}
+        </td>
+        <td class="px-4 py-3 text-slate-200">{{ report.subject }}</td>
+        <td class="px-4 py-3">
+          <button
+            hx-get="/reports/{{ report.id }}"
+            hx-target="#report-viewer"
+            hx-swap="innerHTML"
+            class="text-xs text-sky-400 hover:text-sky-300 underline">
+            Open
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="report-viewer" class="mt-8 bg-white rounded-lg overflow-hidden">
+  <p class="text-slate-500 text-sm text-center py-8">Click a report to view it here</p>
+</div>
+
+{% if page > 1 %}
+<div class="mt-4 flex gap-4">
+  <a href="/reports?page={{ page - 1 }}" class="text-sm text-sky-400 hover:underline">← Newer</a>
+  <a href="/reports?page={{ page + 1 }}" class="text-sm text-sky-400 hover:underline">Older →</a>
+</div>
+{% endif %}
+
+{% else %}
+<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
+  <p class="text-slate-400 text-lg mb-2">No reports yet</p>
+  <p class="text-slate-500 text-sm">Daily digests are generated automatically at your configured digest time.</p>
+</div>
+{% endif %}
+
+{% endblock %}
