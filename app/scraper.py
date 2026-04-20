@@ -13,7 +13,7 @@ from .config import get as get_config  # still used for cookie path env override
 
 logger = logging.getLogger(__name__)
 
-COOKIES_PATH = "/app/cookies/twitter_cookies.json"
+COOKIES_PATH = os.environ.get("COOKIES_PATH", "/app/cookies/twitter_cookies.json")
 
 # Errors that indicate cookies are expired/invalid rather than transient
 _AUTH_ERROR_PATTERNS = (
