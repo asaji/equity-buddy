@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import os
+import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -220,7 +221,8 @@ async def scrape_twitter(handles: list[str]) -> int:
                     handle, COOKIES_PATH, e,
                 )
                 break  # No point continuing — all handles will fail
-            logger.error("Error fetching tweets for @%s: %s", handle, e)
+            logger.error("Error fetching tweets for @%s: %s\n%s",
+                         handle, e, traceback.format_exc())
 
     logger.info("Scraped %d new tweets from %d handles", total, len(handles))
     return total
