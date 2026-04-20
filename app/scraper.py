@@ -43,44 +43,25 @@ def _looks_like_auth_error(exc: Exception) -> bool:
 
 
 def _patch_twikit_client(client) -> None:
-    """Bypass twikit's broken KEY_BYTE / transaction-ID generation on a client instance.
+    """Pre-populate client._transaction so twikit never fetches x.com to parse KEY_BYTES.
 
-    twikit parses Twitter's obfuscated JS to build x-client-transaction-id
-    headers. Twitter changes this JS often, breaking the parser. The header
-    is analytics-only on Twitter's side — not auth — so a random hex value
-    works fine for scraping. We patch at three levels to be sure it takes:
-    the instance method, the class, and the imported name in the client module.
+    twikit lazily initialises self._transaction on the first request by
+    fetching https://x.com and parsing obfuscated JS. Twitter changes this
+    JS often, breaking the parser. By injecting a stub that returns a random
+    hex string, twikit skips that fetch entirely and the header is accepted
+    fine (it's analytics-only, not auth).
     """
     import secrets
-    import types
 
     class _StubTransaction:
-        def __init__(self, *args, **kwargs):
-            pass
         def get_transaction_id(self, *args, **kwargs) -> str:
             return secrets.token_hex(32)
 
-    # 1. Patch the instance method directly (most reliable)
-    if hasattr(client, "_get_transaction_id"):
-        async def _stub_tid(self, method, path):
-            return secrets.token_hex(32)
-        client._get_transaction_id = types.MethodType(_stub_tid, client)
-
-    # 2. Replace the class in both the utils and client modules
-    try:
-        import twikit.utils as _utils
-        if hasattr(_utils, "ClientTransaction"):
-            _utils.ClientTransaction = _StubTransaction
-    except Exception:
-        pass
-    try:
-        import twikit.client.client as _cc
-        if hasattr(_cc, "ClientTransaction"):
-            _cc.ClientTransaction = _StubTransaction
-    except Exception:
-        pass
-
-    logger.info("twikit transaction-ID patch applied")
+    if hasattr(client, "_transaction"):
+        client._transaction = _StubTransaction()
+        logger.info("twikit transaction-ID patch applied (pre-populated _transaction)")
+    else:
+        logger.warning("client._transaction attribute not found — patch may not work")
 
 
 def _read_cookies_as_dict() -> Optional[dict]:
