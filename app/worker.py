@@ -53,23 +53,54 @@ def update_watchlist_prices() -> None:
 
 
 async def run_full_cycle() -> dict:
+    import traceback as _tb
     logger.info("Starting scrape+extract+enrich cycle")
 
+    logger.info("STEP 1: scraping")
     scrape_result = await scraper.run_scrape()
     logger.info("Scrape complete: %s", scrape_result)
 
-    extraction_count = extractor.run_extraction()
-    logger.info("Extracted %d ideas", extraction_count)
+    logger.info("STEP 2: extraction")
+    try:
+        extraction_count = extractor.run_extraction()
+        logger.info("Extracted %d ideas", extraction_count)
+    except Exception as e:
+        logger.error("STEP 2 FAILED: %s", e)
+        for line in _tb.format_exc().splitlines():
+            logger.error("  %s", line)
+        extraction_count = 0
 
-    new_ideas = db.get_ideas_since(hours=2)
-    enrichment_count = enrichment.run_enrichment(new_ideas)
-    logger.info("Enriched %d tickers", enrichment_count)
+    logger.info("STEP 3: enrichment")
+    try:
+        new_ideas = db.get_ideas_since(hours=2)
+        logger.info("Got %d recent ideas for enrichment", len(new_ideas))
+        enrichment_count = enrichment.run_enrichment(new_ideas)
+        logger.info("Enriched %d tickers", enrichment_count)
+    except Exception as e:
+        logger.error("STEP 3 FAILED: %s", e)
+        for line in _tb.format_exc().splitlines():
+            logger.error("  %s", line)
+        new_ideas = []
+        enrichment_count = 0
 
-    alerts_sent = alerts.send_idea_alerts_for_new_ideas(new_ideas)
-    logger.info("Sent %d idea alerts", alerts_sent)
+    logger.info("STEP 4: alerts")
+    try:
+        alerts_sent = alerts.send_idea_alerts_for_new_ideas(new_ideas)
+        logger.info("Sent %d idea alerts", alerts_sent)
+    except Exception as e:
+        logger.error("STEP 4 FAILED: %s", e)
+        for line in _tb.format_exc().splitlines():
+            logger.error("  %s", line)
+        alerts_sent = 0
 
-    update_watchlist_prices()
-    logger.info("Watchlist prices updated")
+    logger.info("STEP 5: watchlist prices")
+    try:
+        update_watchlist_prices()
+        logger.info("Watchlist prices updated")
+    except Exception as e:
+        logger.error("STEP 5 FAILED: %s", e)
+        for line in _tb.format_exc().splitlines():
+            logger.error("  %s", line)
 
     return {
         "scrape": scrape_result,
@@ -80,10 +111,13 @@ async def run_full_cycle() -> dict:
 
 
 def run_cycle_sync() -> None:
+    import traceback as _tb
     try:
         asyncio.run(run_full_cycle())
     except Exception as e:
         logger.error("Cycle failed: %s", e)
+        for line in _tb.format_exc().splitlines():
+            logger.error("  %s", line)
 
 
 def run_digest() -> None:
