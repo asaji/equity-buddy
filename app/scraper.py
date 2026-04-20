@@ -43,6 +43,43 @@ def _looks_like_auth_error(exc: Exception) -> bool:
     return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
+def _patch_twikit_user() -> None:
+    """Wrap User.__init__ to tolerate missing profile fields like 'urls'.
+
+    twikit's User.__init__ does hard dict lookups on profile entity fields.
+    Accounts with no website link have no 'urls' key in their entities,
+    causing a KeyError that prevents the user lookup from returning at all.
+    We catch any KeyError in __init__ and fill in safe defaults so the rest
+    of the pipeline can proceed.
+    """
+    try:
+        import twikit.user as twikit_user
+        _original_init = twikit_user.User.__init__
+
+        def _safe_init(self, client, data, *args, **kwargs):
+            try:
+                _original_init(self, client, data, *args, **kwargs)
+            except (KeyError, TypeError):
+                if not hasattr(self, "urls"):
+                    self.urls = []
+                if not hasattr(self, "entities"):
+                    self.entities = {}
+
+        twikit_user.User.__init__ = _safe_init
+
+        # Also patch it in the client module if imported there
+        try:
+            import twikit.client.client as _cc
+            if hasattr(_cc, "User"):
+                _cc.User.__init__ = _safe_init
+        except Exception:
+            pass
+
+        logger.info("twikit User patched — missing profile fields will use defaults")
+    except Exception as e:
+        logger.warning("Could not patch twikit User: %s", e)
+
+
 def _patch_twikit_client(_client) -> None:
     """Patch ClientTransaction.init and generate_transaction_id at the class level.
 
@@ -155,6 +192,7 @@ async def _get_twitter_client():
 
     client = Client("en-US")
     _patch_twikit_client(client)
+    _patch_twikit_user()
 
     try:
         # Bypass client.load_cookies() — set directly on the underlying httpx client
@@ -191,10 +229,8 @@ async def scrape_twitter(handles: list[str]) -> int:
     for handle in handles:
         handle = handle.lstrip("@")
         try:
-            # Use search_tweet instead of get_user_by_screen_name + get_user_tweets
-            # to avoid twikit's User object parsing which fails on accounts with
-            # no profile URL ('urls' KeyError in User.__init__)
-            tweets = await client.search_tweet(f"from:{handle}", "Latest", count=50)
+            user = await client.get_user_by_screen_name(handle)
+            tweets = await client.get_user_tweets(user.id, "Tweets", count=50)
             for tweet in tweets:
                 try:
                     pub_dt = getattr(tweet, "created_at_datetime", None)
@@ -219,7 +255,8 @@ async def scrape_twitter(handles: list[str]) -> int:
                     if post_id:
                         total += 1
                 except Exception as e:
-                    logger.warning("Error processing tweet from @%s: %s", handle, e)
+                    logger.warning("Error processing tweet from @%s: %s\n%s",
+                                   handle, e, traceback.format_exc())
         except Exception as e:
             if _looks_like_auth_error(e):
                 logger.error(
