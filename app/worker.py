@@ -1,22 +1,44 @@
 import asyncio
 import logging
 import os
+import sys
 from datetime import date
-
-import yfinance as yf
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
-
-from . import database as db
-from . import alerts, email_report, enrichment, extractor, scraper
-from .config import get as get_config, load_config
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+logger.info("=== EquityBuddy worker starting ===")
+logger.info("Python %s", sys.version)
+logger.info("Working dir: %s", os.getcwd())
+
+try:
+    import yfinance as yf
+    logger.info("yfinance OK")
+except Exception as e:
+    logger.error("IMPORT FAIL yfinance: %s", e)
+
+try:
+    from google import genai  # noqa: F401
+    logger.info("google-genai OK")
+except Exception as e:
+    logger.error("IMPORT FAIL google-genai: %s", e)
+
+try:
+    from apscheduler.schedulers.blocking import BlockingScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
+    logger.info("apscheduler OK")
+except Exception as e:
+    logger.error("IMPORT FAIL apscheduler: %s", e)
+    raise
+
+from . import database as db
+from . import alerts, email_report, enrichment, extractor, scraper
+from .config import get as get_config, load_config
 
 
 def update_watchlist_prices() -> None:
