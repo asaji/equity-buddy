@@ -51,7 +51,7 @@ def send_idea_alert(idea: dict, enrichment: Optional[dict] = None) -> bool:
     if idea_level < threshold_level:
         return False
 
-    ticker = idea["ticker"]
+    ticker = idea.get("ticker", "")
     author = idea.get("author", "unknown")
     sentiment = idea.get("sentiment", "bullish")
     thesis = idea.get("thesis", "")
@@ -143,7 +143,14 @@ def check_and_send_price_milestones() -> int:
 def send_idea_alerts_for_new_ideas(ideas: list[dict]) -> int:
     sent = 0
     for idea in ideas:
-        enrichment = db.get_enrichment_today(idea["ticker"])
-        if send_idea_alert(idea, enrichment):
-            sent += 1
+        try:
+            ticker = idea.get("ticker") or idea.get('"ticker"')
+            if not ticker:
+                logger.warning("Skipping idea with no ticker: %s", idea)
+                continue
+            enrichment = db.get_enrichment_today(ticker)
+            if send_idea_alert(idea, enrichment):
+                sent += 1
+        except Exception as e:
+            logger.warning("Error sending alert for idea %s: %s", idea, e)
     return sent

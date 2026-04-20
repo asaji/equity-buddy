@@ -104,9 +104,9 @@ def _fetch_research_summary(client: anthropic.Anthropic, ticker: str, data: dict
     for attempt in range(max_retries):
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=1024,
-                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=[{"role": "user", "content": prompt}],
             )
             for block in response.content:
@@ -153,7 +153,7 @@ def run_enrichment(ideas: Optional[list[dict]] = None) -> int:
     if ideas is None:
         ideas = db.get_ideas_since(hours=24)
 
-    tickers = list({idea["ticker"] for idea in ideas})
+    tickers = list({idea["ticker"] for idea in ideas if idea.get("ticker")})
     if not tickers:
         logger.info("No tickers to enrich")
         return 0
