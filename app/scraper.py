@@ -42,6 +42,37 @@ def _looks_like_auth_error(exc: Exception) -> bool:
     return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
+def _patch_twikit_transaction_id() -> None:
+    """Replace twikit's ClientTransaction with a stub returning a random ID.
+
+    twikit parses Twitter's obfuscated JavaScript to generate the
+    x-client-transaction-id header. Twitter updates this JS frequently,
+    breaking the parser ("Couldn't get KEY_BYTE indices"). The header is
+    used for Twitter-side analytics/dedup — not auth — so a random hex
+    string is accepted fine for scraping.
+    """
+    import secrets
+
+    class _StubTransaction:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_transaction_id(self, *args, **kwargs) -> str:
+            return secrets.token_hex(32)
+
+    try:
+        import twikit.utils as twikit_utils
+        if hasattr(twikit_utils, "ClientTransaction"):
+            twikit_utils.ClientTransaction = _StubTransaction
+        # Also patch the client module in case it imported it directly
+        import twikit.client.client as twikit_client
+        if hasattr(twikit_client, "ClientTransaction"):
+            twikit_client.ClientTransaction = _StubTransaction
+        logger.info("Patched twikit ClientTransaction — KEY_BYTE parsing bypassed")
+    except Exception as e:
+        logger.warning("Could not patch twikit ClientTransaction: %s", e)
+
+
 def _read_cookies_as_dict() -> Optional[dict]:
     """Read the cookie file and return a {name: value} dict regardless of source format.
 
@@ -101,6 +132,8 @@ async def _get_twitter_client():
     except ImportError:
         logger.error("twikit not installed")
         return None
+
+    _patch_twikit_transaction_id()
 
     cookies = _read_cookies_as_dict()
     if not cookies:
