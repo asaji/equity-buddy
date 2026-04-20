@@ -189,18 +189,25 @@ async def scrape_twitter(handles: list[str]) -> int:
 
     total = 0
     for handle in handles:
+        handle = handle.lstrip("@")
         try:
-            handle = handle.lstrip("@")
-            user = await client.get_user_by_screen_name(handle)
-            tweets = await client.get_user_tweets(user.id, "Tweets", count=50)
+            # Use search_tweet instead of get_user_by_screen_name + get_user_tweets
+            # to avoid twikit's User object parsing which fails on accounts with
+            # no profile URL ('urls' KeyError in User.__init__)
+            tweets = await client.search_tweet(f"from:{handle}", "Latest", count=50)
             for tweet in tweets:
                 try:
-                    pub_dt = tweet.created_at_datetime
+                    pub_dt = getattr(tweet, "created_at_datetime", None)
                     if not _is_recent(pub_dt):
                         continue
-                    content = tweet.full_text or tweet.text or ""
-                    url = f"https://x.com/{handle}/status/{tweet.id}"
-                    content_hash = _hash(f"{handle}:{tweet.id}:{content[:200]}")
+                    content = (
+                        getattr(tweet, "full_text", None)
+                        or getattr(tweet, "text", None)
+                        or ""
+                    )
+                    tweet_id = getattr(tweet, "id", None) or getattr(tweet, "id_str", None)
+                    url = f"https://x.com/{handle}/status/{tweet_id}" if tweet_id else ""
+                    content_hash = _hash(f"{handle}:{tweet_id}:{content[:200]}")
                     post_id = db.insert_post(
                         source_type="twitter",
                         author=handle,
@@ -220,7 +227,7 @@ async def scrape_twitter(handles: list[str]) -> int:
                     "Re-export from your browser to %s and restart the worker. Error: %s",
                     handle, COOKIES_PATH, e,
                 )
-                break  # No point continuing — all handles will fail
+                break
             logger.error("Error fetching tweets for @%s: %s\n%s",
                          handle, e, traceback.format_exc())
 
