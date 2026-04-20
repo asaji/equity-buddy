@@ -42,26 +42,41 @@ def _looks_like_auth_error(exc: Exception) -> bool:
     return any(p in msg for p in _AUTH_ERROR_PATTERNS)
 
 
-def _patch_twikit_client(client) -> None:
-    """Pre-populate client._transaction so twikit never fetches x.com to parse KEY_BYTES.
+def _patch_twikit_client(_client) -> None:
+    """Patch ClientTransaction.init and generate_transaction_id at the class level.
 
-    twikit lazily initialises self._transaction on the first request by
-    fetching https://x.com and parsing obfuscated JS. Twitter changes this
-    JS often, breaking the parser. By injecting a stub that returns a random
-    hex string, twikit skips that fetch entirely and the header is accepted
-    fine (it's analytics-only, not auth).
+    From inspecting the installed source:
+    - ClientTransaction.init() fetches x.com then calls get_indices() which
+      parses an ondemand JS file for KEY_BYTE indices — this breaks when
+      Twitter updates the JS.
+    - generate_transaction_id() builds the actual header value.
+
+    We replace both: init sets dummy attributes (no network), and
+    generate_transaction_id returns a random urlsafe string. Twitter
+    accepts any value here — it's used for analytics/dedup, not auth.
     """
     import secrets
 
-    class _StubTransaction:
-        def get_transaction_id(self, *args, **kwargs) -> str:
-            return secrets.token_hex(32)
+    try:
+        from twikit.x_client_transaction.transaction import ClientTransaction
 
-    if hasattr(client, "_transaction"):
-        client._transaction = _StubTransaction()
-        logger.info("twikit transaction-ID patch applied (pre-populated _transaction)")
-    else:
-        logger.warning("client._transaction attribute not found — patch may not work")
+        async def _stub_init(self, session, headers):
+            self.DEFAULT_ROW_INDEX = 0
+            self.DEFAULT_KEY_BYTES_INDICES = [0] * 16
+            # Valid base64 so get_key_bytes() won't blow up if called
+            self.key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            self.key_bytes = [0] * 32
+            self.animation_key = "0" * 16
+
+        def _stub_generate(self, *args, **kwargs) -> str:
+            return secrets.token_urlsafe(32)
+
+        ClientTransaction.init = _stub_init
+        ClientTransaction.generate_transaction_id = _stub_generate
+
+        logger.info("twikit ClientTransaction patched — KEY_BYTE fetch bypassed")
+    except Exception as e:
+        logger.warning("Could not patch twikit ClientTransaction: %s", e)
 
 
 def _read_cookies_as_dict() -> Optional[dict]:
