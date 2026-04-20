@@ -3,7 +3,8 @@ import logging
 import time
 from typing import Optional
 
-import anthropic
+from google import genai
+from google.genai import types
 
 from . import database as db
 from .config import get as get_config
@@ -33,39 +34,36 @@ Posts to analyze:
 {posts_json}"""
 
 
-def _call_claude_with_retry(client: anthropic.Anthropic, prompt: str,
+def _call_gemini_with_retry(client: genai.Client, prompt: str,
                              max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
-            response = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=4096,
-                messages=[{"role": "user", "content": prompt}],
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(max_output_tokens=4096),
             )
-            return response.content[0].text
-        except anthropic.RateLimitError as e:
-            wait = 2 ** attempt * 5
-            logger.warning("Rate limit hit, retrying in %ds (attempt %d): %s", wait, attempt + 1, e)
+            return response.text
+        except Exception as e:
+            msg = str(e)
+            wait = 2 ** attempt * (5 if "429" in msg or "RESOURCE_EXHAUSTED" in msg else 2)
+            logger.warning("Gemini API error, retrying in %ds (attempt %d): %s", wait, attempt + 1, e)
             time.sleep(wait)
-        except anthropic.APIError as e:
-            wait = 2 ** attempt * 2
-            logger.warning("API error, retrying in %ds (attempt %d): %s", wait, attempt + 1, e)
-            time.sleep(wait)
-    logger.error("Claude API failed after %d retries", max_retries)
+    logger.error("Gemini API failed after %d retries", max_retries)
     return None
 
 
 def extract_ideas_from_posts(posts: list[dict]) -> int:
     cfg = get_config()
-    api_key = cfg.get("anthropic_api_key", "")
+    api_key = cfg.get("gemini_api_key", "")
     if not api_key:
-        logger.warning("No Anthropic API key — skipping extraction")
+        logger.warning("No Gemini API key — skipping extraction")
         return 0
 
     if not posts:
         return 0
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 
     posts_data = [
         {
@@ -78,7 +76,7 @@ def extract_ideas_from_posts(posts: list[dict]) -> int:
     ]
 
     prompt = EXTRACTION_PROMPT.replace("{posts_json}", json.dumps(posts_data, indent=2))
-    raw = _call_claude_with_retry(client, prompt)
+    raw = _call_gemini_with_retry(client, prompt)
     if not raw:
         return 0
 

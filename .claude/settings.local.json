@@ -12,7 +12,10 @@
       "Bash(git rebase *)",
       "Bash(GIT_EDITOR=true git rebase --continue)",
       "Bash(GIT_EDITOR=true git -c core.editor=true rebase --continue)",
-      "Bash(GIT_EDITOR=\"true\" git rebase --continue)"
+      "Bash(GIT_EDITOR=\"true\" git rebase --continue)",
+      "Bash(git checkout *)",
+      "Bash(pip install *)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

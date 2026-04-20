@@ -4,7 +4,8 @@ import time
 from datetime import date
 from typing import Optional
 
-import anthropic
+from google import genai
+from google.genai import types
 import requests
 
 from . import database as db
@@ -32,22 +33,19 @@ Requirements:
 - Return only the HTML starting with <!DOCTYPE html>, no preamble"""
 
 
-def _call_claude(client: anthropic.Anthropic, prompt: str, max_retries: int = 3) -> Optional[str]:
+def _call_gemini(client: genai.Client, prompt: str, max_retries: int = 3) -> Optional[str]:
     for attempt in range(max_retries):
         try:
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=8192,
-                messages=[{"role": "user", "content": prompt}],
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(max_output_tokens=8192),
             )
-            return response.content[0].text
-        except anthropic.RateLimitError as e:
-            wait = 2 ** attempt * 5
-            logger.warning("Rate limit, retrying in %ds: %s", wait, e)
-            time.sleep(wait)
-        except anthropic.APIError as e:
-            wait = 2 ** attempt * 2
-            logger.warning("API error, retrying in %ds: %s", wait, e)
+            return response.text
+        except Exception as e:
+            msg = str(e)
+            wait = 2 ** attempt * (5 if "429" in msg or "RESOURCE_EXHAUSTED" in msg else 2)
+            logger.warning("Gemini API error, retrying in %ds: %s", wait, e)
             time.sleep(wait)
     return None
 
@@ -124,9 +122,9 @@ def generate_and_send_digest() -> Optional[int]:
     _send_pushover_digest(subject, summary)
 
     # Generate full HTML report with Claude if API key is available
-    api_key = cfg.get("anthropic_api_key", "")
+    api_key = cfg.get("gemini_api_key", "")
     if not api_key:
-        logger.warning("No Anthropic API key — storing plain text report only")
+        logger.warning("No Gemini API key — storing plain text report only")
         html = f"<html><body><pre>{subject}\n\n{summary}</pre></body></html>"
         report_id = db.insert_report(subject=subject, html_content=html)
         return report_id
@@ -143,8 +141,8 @@ def generate_and_send_digest() -> Optional[int]:
         ideas_json=json.dumps(ideas_with_enrichment, indent=2, default=str)[:12000],
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    html = _call_claude(client, prompt)
+    client = genai.Client(api_key=api_key)
+    html = _call_gemini(client, prompt)
     if not html:
         logger.error("Failed to generate HTML report")
         html = f"<html><body><pre>{subject}\n\n{summary}</pre></body></html>"

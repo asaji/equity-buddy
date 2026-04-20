@@ -30,7 +30,7 @@ def get() -> dict:
 
 def _defaults() -> dict:
     return {
-        "anthropic_api_key": "",
+        "gemini_api_key": "",
         "pushover": {"user_key": "", "api_token": ""},
         "base_url": "",
         "schedule": {
@@ -55,8 +55,8 @@ def _merge(base: dict, override: dict) -> dict:
 
 
 def _warn_missing(cfg: dict) -> None:
-    if not cfg.get("anthropic_api_key"):
-        logger.warning("anthropic_api_key is not set — extraction and enrichment disabled")
+    if not cfg.get("gemini_api_key"):
+        logger.warning("gemini_api_key is not set — extraction and enrichment disabled")
     if not cfg["pushover"].get("user_key"):
         logger.warning("Pushover not configured — alerts and digest notifications disabled")
     # Accounts are stored in the DB, not config.yaml — no warning needed here

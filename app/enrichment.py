@@ -1,9 +1,9 @@
-import json
 import logging
 import time
 from typing import Optional
 
-import anthropic
+from google import genai
+from google.genai import types
 import yfinance as yf
 
 from . import database as db
@@ -86,7 +86,7 @@ def _fetch_yfinance(ticker: str) -> Optional[dict]:
         return None
 
 
-def _fetch_research_summary(client: anthropic.Anthropic, ticker: str, data: dict,
+def _fetch_research_summary(client: genai.Client, ticker: str, data: dict,
                              max_retries: int = 3) -> Optional[str]:
     price = data.get("current_price") or 0
     pct_3m = data.get("pct_change_3m") or 0
@@ -103,23 +103,19 @@ def _fetch_research_summary(client: anthropic.Anthropic, ticker: str, data: dict
 
     for attempt in range(max_retries):
         try:
-            response = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=1024,
-                tools=[{"type": "web_search_20250305", "name": "web_search"}],
-                messages=[{"role": "user", "content": prompt}],
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    max_output_tokens=1024,
+                ),
             )
-            for block in response.content:
-                if hasattr(block, "text"):
-                    return block.text.strip()
-            return None
-        except anthropic.RateLimitError as e:
-            wait = 2 ** attempt * 5
-            logger.warning("Rate limit, retrying research for %s in %ds: %s", ticker, wait, e)
-            time.sleep(wait)
-        except anthropic.APIError as e:
-            wait = 2 ** attempt * 2
-            logger.warning("API error for %s research, retrying in %ds: %s", ticker, wait, e)
+            return response.text
+        except Exception as e:
+            msg = str(e)
+            wait = 2 ** attempt * (5 if "429" in msg or "RESOURCE_EXHAUSTED" in msg else 2)
+            logger.warning("Gemini error for %s research, retrying in %ds: %s", ticker, wait, e)
             time.sleep(wait)
     return None
 
@@ -137,9 +133,9 @@ def enrich_ticker(ticker: str) -> Optional[dict]:
         return None
 
     cfg = get_config()
-    api_key = cfg.get("anthropic_api_key", "")
+    api_key = cfg.get("gemini_api_key", "")
     if api_key:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = genai.Client(api_key=api_key)
         summary = _fetch_research_summary(client, ticker, data)
         data["research_summary"] = summary
     else:
