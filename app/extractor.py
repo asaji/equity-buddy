@@ -77,7 +77,7 @@ def extract_ideas_from_posts(posts: list[dict]) -> int:
         for i, p in enumerate(posts)
     ]
 
-    prompt = EXTRACTION_PROMPT.format(posts_json=json.dumps(posts_data, indent=2))
+    prompt = EXTRACTION_PROMPT.replace("{posts_json}", json.dumps(posts_data, indent=2))
     raw = _call_claude_with_retry(client, prompt)
     if not raw:
         return 0
