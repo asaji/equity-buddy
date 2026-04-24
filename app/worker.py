@@ -16,10 +16,10 @@ logger.info("Python %s", sys.version)
 logger.info("Working dir: %s", os.getcwd())
 
 try:
-    import yfinance as yf
-    logger.info("yfinance OK")
+    from yahooquery import Ticker as YQTicker
+    logger.info("yahooquery OK")
 except Exception as e:
-    logger.error("IMPORT FAIL yfinance: %s", e)
+    logger.error("IMPORT FAIL yahooquery: %s", e)
 
 try:
     from google import genai  # noqa: F401
@@ -41,6 +41,42 @@ from . import alerts, email_report, enrichment, extractor, scraper
 from .config import get as get_config, load_config
 
 
+def backfill_price_history(ticker: str, awareness_price: float | None) -> int:
+    """Fetch up to 90 days of historical closes and populate price_history."""
+    try:
+        yq = YQTicker(ticker)
+        hist = yq.history(period="3mo")
+        if hist is None or hist.empty:
+            logger.warning("No history returned for %s", ticker)
+            return 0
+
+        import pandas as pd
+        if isinstance(hist.index, pd.MultiIndex):
+            try:
+                hist = hist.xs(ticker, level=0)
+            except KeyError:
+                hist = hist.xs(ticker.upper(), level=0)
+
+        count = 0
+        for date_idx, row in hist.iterrows():
+            date_str = date_idx.strftime("%Y-%m-%d") if hasattr(date_idx, "strftime") else str(date_idx)[:10]
+            close = float(row.get("close") or row.get("Close") or 0)
+            if close <= 0:
+                continue
+            volume = int(row.get("volume") or row.get("Volume") or 0) or None
+            pct = None
+            if awareness_price and awareness_price > 0:
+                pct = round((close - awareness_price) / awareness_price * 100, 2)
+            db.insert_price_history(ticker, close, pct, volume, date_str=date_str)
+            count += 1
+
+        logger.info("Backfilled %d days of price history for %s", count, ticker)
+        return count
+    except Exception as e:
+        logger.warning("Price backfill failed for %s: %s", ticker, e)
+        return 0
+
+
 def update_watchlist_prices() -> None:
     stocks = db.get_active_watchlist_stocks()
     if not stocks:
@@ -50,15 +86,20 @@ def update_watchlist_prices() -> None:
     prices: dict[str, float] = {}
     volumes: dict[str, int] = {}
 
-    for ticker in tickers:
-        try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="2d")
-            if hist is not None and not hist.empty:
-                prices[ticker] = float(hist["Close"].iloc[-1])
-                volumes[ticker] = int(hist["Volume"].iloc[-1]) if "Volume" in hist else None
-        except Exception as e:
-            logger.warning("Price update failed for %s: %s", ticker, e)
+    try:
+        yq = YQTicker(tickers)
+        quotes = yq.price
+        for ticker in tickers:
+            data = quotes.get(ticker, {})
+            if isinstance(data, dict) and "regularMarketPrice" in data:
+                prices[ticker] = float(data["regularMarketPrice"])
+                volumes[ticker] = int(data.get("regularMarketVolume") or 0) or None
+            else:
+                logger.warning("No price data for %s: %s", ticker, data)
+    except Exception as e:
+        logger.error("Batch price fetch failed: %s", e)
+
+    logger.info("Fetched prices for %d/%d tickers", len(prices), len(tickers))
 
     for stock in stocks:
         ticker = stock["ticker"]
@@ -77,6 +118,10 @@ def update_watchlist_prices() -> None:
 async def run_full_cycle() -> dict:
     import traceback as _tb
     logger.info("Starting scrape+extract+enrich cycle")
+
+    cookie_status = scraper.get_cookie_status()
+    if cookie_status["status"] in ("expired", "expiring", "missing"):
+        logger.warning("Twitter cookies: %s", cookie_status["message"])
 
     logger.info("STEP 1: scraping")
     scrape_result = await scraper.run_scrape()

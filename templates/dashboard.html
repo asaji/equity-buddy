@@ -1,120 +1,282 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold">Dashboard</h1>
-  <button
-    hx-post="/run-now"
-    hx-target="#run-result"
-    hx-swap="innerHTML"
-    class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded text-sm font-medium">
-    Run Now
-  </button>
+<div class="flex items-center justify-between mb-5">
+  <div>
+    <h1 class="page-title">Signal Dashboard</h1>
+    <p class="mono text-xs mt-0.5" style="color:#2a4060;">
+      {% if selected_date == today %}TODAY'S{% else %}{{ selected_date }}{% endif %} EXTRACTED IDEAS
+    </p>
+  </div>
+  <div class="flex items-center gap-3">
+    <!-- Date picker -->
+    {% if dates %}
+    <div class="flex items-center gap-2">
+      {% set idx = dates.index(selected_date) if selected_date in dates else -1 %}
+      {% if idx < dates|length - 1 %}
+      <a href="/?date={{ dates[idx + 1] }}" class="btn-ghost" style="padding:5px 10px;">‹</a>
+      {% else %}
+      <span class="btn-ghost" style="padding:5px 10px;opacity:0.2;cursor:default;">‹</span>
+      {% endif %}
+
+      <select onchange="window.location='/?date='+this.value"
+              style="background:#0c1a2e;border:1px solid #162740;color:#c8dff5;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;padding:5px 10px;border-radius:2px;outline:none;cursor:pointer;">
+        {% for d in dates %}
+        <option value="{{ d }}" {% if d == selected_date %}selected{% endif %}>
+          {{ d }}{% if d == today %} (today){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+
+      {% if idx > 0 %}
+      <a href="/?date={{ dates[idx - 1] }}" class="btn-ghost" style="padding:5px 10px;">›</a>
+      {% else %}
+      <span class="btn-ghost" style="padding:5px 10px;opacity:0.2;cursor:default;">›</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if selected_date == today %}
+    <button hx-post="/run-now" hx-target="#run-result" hx-swap="innerHTML" class="btn-primary">
+      ▶ Run Now
+    </button>
+    {% endif %}
+    {% if unextracted_count > 0 %}
+    <form hx-post="/re-extract" hx-target="#run-result" hx-swap="innerHTML" class="inline">
+      <input type="hidden" name="date" value="{{ selected_date }}" />
+      <button type="submit" class="btn-ghost flex items-center gap-1.5">
+        ↻ Re-extract
+        <span class="badge badge-amber">{{ unextracted_count }}</span>
+      </button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
-<div id="run-result" class="mb-4"></div>
+<div id="run-result" class="mb-4 text-sm font-sans"></div>
 
 <!-- Stats bar -->
-<div class="grid grid-cols-3 gap-4 mb-8">
-  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Ideas Today</p>
-    <p class="text-3xl font-bold text-emerald-400">{{ stats.ideas_today }}</p>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">Ideas Today</p>
+    <p class="mono text-3xl font-semibold" style="color:#00d97e;">{{ stats.ideas_today }}</p>
   </div>
-  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Alerts Sent</p>
-    <p class="text-3xl font-bold text-amber-400">{{ stats.alerts_sent }}</p>
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">Alerts Sent</p>
+    <p class="mono text-3xl font-semibold" style="color:#f5a623;">{{ stats.alerts_sent }}</p>
   </div>
-  <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
-    <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Sources Active</p>
-    <p class="text-3xl font-bold text-sky-400">{{ stats.sources_active }}</p>
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">Active Sources</p>
+    <p class="mono text-3xl font-semibold" style="color:#4da8ff;">{{ stats.sources_active }}</p>
   </div>
 </div>
 
+{% if consensus %}
+<div class="mb-5 p-4 card" style="border-radius:2px;border-color:rgba(245,166,35,0.3);background:rgba(245,166,35,0.04);">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="badge badge-amber">CONSENSUS</span>
+    <span class="label" style="color:#5a7a9a;">MULTIPLE SOURCES AGREE — {{ selected_date }}</span>
+  </div>
+  <div class="flex flex-wrap gap-3">
+    {% for c in consensus %}
+    {% set net = c.bullish - c.bearish %}
+    <a href="/ticker/{{ c.ticker }}" style="text-decoration:none;">
+      <div class="flex items-center gap-2 px-3 py-2" style="background:#071626;border:1px solid {% if net > 0 %}rgba(0,217,126,0.3){% elif net < 0 %}rgba(255,77,77,0.3){% else %}rgba(77,168,255,0.3){% endif %};border-radius:2px;">
+        <span class="ticker text-sm" style="color:{% if net > 0 %}#00d97e{% elif net < 0 %}#ff4d4d{% else %}#4da8ff{% endif %};">{{ c.ticker }}</span>
+        <span class="badge badge-dim">{{ c.author_count }} sources</span>
+        {% if c.bullish > 0 %}<span class="mono text-xs" style="color:#00d97e;">↑{{ c.bullish }}</span>{% endif %}
+        {% if c.bearish > 0 %}<span class="mono text-xs" style="color:#ff4d4d;">↓{{ c.bearish }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if ideas %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+
+<!-- Filters -->
+<div class="flex items-center gap-4 mb-3 flex-wrap">
+  <div class="flex items-center gap-1.5">
+    <span class="label" style="color:#2a4060;">CONVICTION</span>
+    <button onclick="setFilter('conviction','all')" class="filter-btn btn-ghost active" data-group="conviction" data-val="all">All</button>
+    <button onclick="setFilter('conviction','high')" class="filter-btn btn-ghost" data-group="conviction" data-val="high" style="color:#00d97e;">High</button>
+    <button onclick="setFilter('conviction','medium')" class="filter-btn btn-ghost" data-group="conviction" data-val="medium" style="color:#f5a623;">Med</button>
+    <button onclick="setFilter('conviction','low')" class="filter-btn btn-ghost" data-group="conviction" data-val="low">Low</button>
+  </div>
+  <div class="flex items-center gap-1.5">
+    <span class="label" style="color:#2a4060;">SENTIMENT</span>
+    <button onclick="setFilter('sentiment','all')" class="filter-btn btn-ghost active" data-group="sentiment" data-val="all">All</button>
+    <button onclick="setFilter('sentiment','bullish')" class="filter-btn btn-ghost" data-group="sentiment" data-val="bullish" style="color:#00d97e;">Bull</button>
+    <button onclick="setFilter('sentiment','bearish')" class="filter-btn btn-ghost" data-group="sentiment" data-val="bearish" style="color:#ff4d4d;">Bear</button>
+  </div>
+  <div class="flex items-center gap-1.5">
+    <span class="label" style="color:#2a4060;">SOURCE</span>
+    <button onclick="setFilter('source','all')" class="filter-btn btn-ghost active" data-group="source" data-val="all">All</button>
+    <button onclick="setFilter('source','twitter')" class="filter-btn btn-ghost" data-group="source" data-val="twitter">Twitter</button>
+    <button onclick="setFilter('source','substack')" class="filter-btn btn-ghost" data-group="source" data-val="substack">Substack</button>
+  </div>
+  <span id="filter-count" class="mono text-xs ml-auto" style="color:#2a4060;">{{ ideas|length }} ideas</span>
+</div>
+
+<div class="card" style="border-radius:2px;overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="w-full data-table" style="min-width:640px;">
+    <thead>
       <tr>
-        <th class="px-4 py-3 text-left">Ticker</th>
-        <th class="px-4 py-3 text-left">Source</th>
-        <th class="px-4 py-3 text-left">Sentiment</th>
-        <th class="px-4 py-3 text-left">Signal</th>
-        <th class="px-4 py-3 text-left">Conviction</th>
-        <th class="px-4 py-3 text-left">Thesis</th>
-        <th class="px-4 py-3 text-left">Track</th>
+        <th class="text-left" style="width:80px;">Ticker</th>
+        <th class="text-left" style="width:120px;">Source</th>
+        <th class="text-left" style="width:90px;">Sentiment</th>
+        <th class="text-left" style="width:90px;">Signal</th>
+        <th class="text-left" style="width:70px;">Conv.</th>
+        <th class="text-left">Thesis</th>
+        <th class="text-left" style="width:80px;">Action</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-slate-700">
+    <tbody id="ideas-tbody">
       {% for idea in ideas %}
       {% set enr = enrichments.get(idea.ticker, {}) %}
-      <tr class="hover:bg-slate-750 transition-colors">
-        <td class="px-4 py-3 font-bold text-white text-base">{{ idea.ticker }}</td>
-        <td class="px-4 py-3">
-          <a href="{{ idea.url }}" target="_blank"
-             class="text-sky-400 hover:text-sky-300 text-xs">
-            @{{ idea.author }}
-            <span class="text-slate-500 ml-1">{{ idea.source_type }}</span>
-          </a>
+      <tr class="idea-row cursor-pointer"
+          data-conviction="{{ idea.conviction }}"
+          data-sentiment="{{ idea.sentiment }}"
+          data-source="{{ idea.source_type }}"
+          onclick="toggleDetail('detail-{{ idea.id }}')">
+        <td onclick="event.stopPropagation()">
+          <a href="/ticker/{{ idea.ticker }}" class="ticker" style="color:#00d97e;font-size:0.95rem;text-decoration:none;border-bottom:1px solid rgba(0,217,126,0.3);">{{ idea.ticker }}</a>
         </td>
-        <td class="px-4 py-3">
+        <td>
+          <span class="mono text-xs" style="color:#4da8ff;">@{{ idea.author }}</span>
+          <span class="label block mt-0.5" style="color:#2a4060;">{{ idea.source_type }}</span>
+        </td>
+        <td>
           {% if idea.sentiment == 'bullish' %}
-          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs font-medium">bullish</span>
+          <span class="badge badge-green">BULL</span>
           {% else %}
-          <span class="bg-red-900/50 text-red-400 border border-red-700 px-2 py-0.5 rounded text-xs font-medium">bearish</span>
+          <span class="badge badge-red">BEAR</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3">
+        <td>
           {% if enr.freshness_signal == 'early' %}
-          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs">early</span>
+          <span class="badge badge-green">EARLY</span>
           {% elif enr.freshness_signal == 'may_have_moved' %}
-          <span class="bg-red-900/50 text-red-400 border border-red-700 px-2 py-0.5 rounded text-xs">moved</span>
+          <span class="badge badge-amber">MOVED</span>
           {% elif enr.freshness_signal %}
-          <span class="bg-amber-900/50 text-amber-400 border border-amber-700 px-2 py-0.5 rounded text-xs">in motion</span>
+          <span class="badge badge-blue">ACTIVE</span>
           {% else %}
-          <span class="text-slate-600 text-xs">—</span>
+          <span style="color:#2a4060;font-size:0.7rem;" class="mono">—</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3">
+        <td>
           {% if idea.conviction == 'high' %}
-          <span class="text-emerald-400 font-semibold text-xs">HIGH</span>
+          <span class="label" style="color:#00d97e;">HIGH</span>
           {% elif idea.conviction == 'medium' %}
-          <span class="text-amber-400 font-semibold text-xs">MED</span>
+          <span class="label" style="color:#f5a623;">MED</span>
           {% else %}
-          <span class="text-slate-400 text-xs">low</span>
+          <span class="label" style="color:#2a4060;">LOW</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3 text-slate-300 max-w-sm">
-          <p class="text-xs leading-relaxed">{{ idea.thesis }}</p>
+        <td>
+          <p class="text-xs leading-relaxed" style="color:#8aabcc;max-width:420px;">{{ idea.thesis }}</p>
           {% if enr.current_price %}
-          <p class="text-slate-500 text-xs mt-1">
+          <p class="mono text-xs mt-1" style="color:#2a4060;">
             ${{ "%.2f"|format(enr.current_price) }}
             {% if enr.pct_change_3m is not none %}
-            · 3m: <span class="{{ 'text-emerald-400' if enr.pct_change_3m > 0 else 'text-red-400' }}">{{ "%+.1f"|format(enr.pct_change_3m) }}%</span>
+            <span style="color:{{ '#00d97e' if enr.pct_change_3m > 0 else '#ff4d4d' }};">
+              {{ "%+.1f"|format(enr.pct_change_3m) }}% 3M
+            </span>
             {% endif %}
-            {% if enr.market_cap %}· MCap: ${{ "%.1f"|format(enr.market_cap / 1e9) }}b{% endif %}
+            {% if enr.market_cap %}· ${{ "%.1f"|format(enr.market_cap / 1e9) }}B{% endif %}
           </p>
           {% endif %}
         </td>
-        <td class="px-4 py-3">
-          <form hx-post="/watchlist-stocks/add" hx-target="#watchlist-stocks-content" hx-swap="outerHTML">
+        <td onclick="event.stopPropagation()">
+          <form hx-post="/watchlist-stocks/track-idea" hx-target="this" hx-swap="outerHTML">
             <input type="hidden" name="ticker" value="{{ idea.ticker }}" />
             <input type="hidden" name="idea_id" value="{{ idea.id }}" />
-            <button type="submit"
-              class="text-xs bg-slate-700 hover:bg-emerald-700 border border-slate-600 hover:border-emerald-600 text-slate-300 hover:text-white px-2 py-1 rounded transition-colors">
-              + Track
-            </button>
+            <button type="submit" class="btn-ghost">+ Track</button>
           </form>
+        </td>
+      </tr>
+      <!-- Expandable detail row -->
+      <tr id="detail-{{ idea.id }}" class="detail-row" style="display:none;background:#071626;">
+        <td colspan="7" style="padding:14px 16px 14px 32px;border-bottom:1px solid #0f2035;">
+          <div class="flex gap-10 items-start">
+            {% if idea.quote %}
+            <div style="flex:1;">
+              <p class="label mb-2" style="color:#2a4060;">Original Quote</p>
+              <p class="text-sm italic leading-relaxed" style="color:#5a7a9a;border-left:2px solid #162740;padding-left:12px;">"{{ idea.quote }}"</p>
+            </div>
+            {% endif %}
+            {% if enr.research_summary %}
+            <div style="flex:1;">
+              <p class="label mb-2" style="color:#2a4060;">Research</p>
+              <p class="text-xs leading-relaxed" style="color:#5a7a9a;">{{ enr.research_summary }}</p>
+            </div>
+            {% endif %}
+            {% if idea.url %}
+            <div class="shrink-0 pt-1">
+              <a href="{{ idea.url }}" target="_blank" class="mono text-xs" style="color:#4da8ff;text-decoration:none;border-bottom:1px solid rgba(77,168,255,0.3);">
+                VIEW TWEET →
+              </a>
+            </div>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
+
 {% else %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
-  <p class="text-slate-400 text-lg mb-2">No ideas yet today</p>
-  <p class="text-slate-500 text-sm">Add Twitter accounts and Substack feeds in <a href="/watchlist" class="text-emerald-400 hover:underline">Sources</a>, then click Run Now or wait for the next scheduled scrape.</p>
+<div class="card p-16 text-center" style="border-radius:2px;">
+  <p class="mono text-xs mb-2" style="color:#2a4060;">NO SIGNALS DETECTED</p>
+  <p class="text-sm" style="color:#5a7a9a;">Add sources in <a href="/watchlist" style="color:#00d97e;">Sources</a>, then click Run Now.</p>
 </div>
 {% endif %}
+
+<script>
+const _filters = { conviction: 'all', sentiment: 'all', source: 'all' };
+
+function setFilter(group, val) {
+  _filters[group] = val;
+  // Update button active states
+  document.querySelectorAll(`.filter-btn[data-group="${group}"]`).forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.val === val);
+    btn.style.borderColor = btn.dataset.val === val ? '#00d97e' : '';
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  const rows = document.querySelectorAll('#ideas-tbody .idea-row');
+  let visible = 0;
+  rows.forEach(row => {
+    const show = (
+      (_filters.conviction === 'all' || row.dataset.conviction === _filters.conviction) &&
+      (_filters.sentiment === 'all' || row.dataset.sentiment === _filters.sentiment) &&
+      (_filters.source === 'all' || row.dataset.source === _filters.source)
+    );
+    row.style.display = show ? '' : 'none';
+    // Hide the paired detail row too
+    const detailId = row.getAttribute('onclick')?.match(/detail-(\S+?)'/)?.[1];
+    if (detailId) {
+      const detail = document.getElementById('detail-' + detailId);
+      if (detail) detail.style.display = 'none';
+    }
+    if (show) visible++;
+  });
+  const total = rows.length;
+  const countEl = document.getElementById('filter-count');
+  if (countEl) countEl.textContent = visible === total ? `${total} ideas` : `${visible} of ${total} ideas`;
+}
+
+function toggleDetail(id) {
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+</script>
 
 {% endblock %}

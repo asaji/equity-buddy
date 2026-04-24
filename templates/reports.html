@@ -1,32 +1,40 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h1 class="text-2xl font-bold mb-6">Daily Digests</h1>
+<div class="flex items-center justify-between mb-5">
+  <div>
+    <h1 class="page-title">Daily Digests</h1>
+    <p class="mono text-xs mt-0.5" style="color:#2a4060;">GENERATED REPORTS</p>
+  </div>
+  <button hx-post="/generate-report" hx-target="#report-gen-result" hx-swap="innerHTML" class="btn-primary">
+    ▶ Generate Report
+  </button>
+</div>
+
+<div id="report-gen-result" class="mb-4 text-sm font-sans"></div>
 
 {% if reports %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+<div class="card mb-6" style="border-radius:2px;overflow:hidden;">
+  <table class="w-full data-table">
+    <thead>
       <tr>
-        <th class="px-4 py-3 text-left">Date</th>
-        <th class="px-4 py-3 text-left">Subject</th>
-        <th class="px-4 py-3 text-left">View</th>
+        <th class="text-left" style="width:120px;">Date</th>
+        <th class="text-left">Subject</th>
+        <th class="text-left" style="width:80px;">View</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-slate-700">
+    <tbody>
       {% for report in reports %}
-      <tr class="hover:bg-slate-750 transition-colors">
-        <td class="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
-          {{ report.generated_at[:10] }}
-        </td>
-        <td class="px-4 py-3 text-slate-200">{{ report.subject }}</td>
-        <td class="px-4 py-3">
+      <tr>
+        <td><span class="mono text-xs" style="color:#5a7a9a;">{{ report.generated_at[:10] }}</span></td>
+        <td><span class="text-sm" style="color:#c8dff5;">{{ report.subject }}</span></td>
+        <td>
           <button
             hx-get="/reports/{{ report.id }}"
             hx-target="#report-viewer"
             hx-swap="innerHTML"
-            class="text-xs text-sky-400 hover:text-sky-300 underline">
-            Open
+            class="mono text-xs" style="color:#4da8ff;background:none;border:none;cursor:pointer;text-decoration:underline;text-underline-offset:3px;">
+            OPEN
           </button>
         </td>
       </tr>
@@ -35,21 +43,21 @@
   </table>
 </div>
 
-<div id="report-viewer" class="mt-8 bg-white rounded-lg overflow-hidden">
-  <p class="text-slate-500 text-sm text-center py-8">Click a report to view it here</p>
-</div>
-
 {% if page > 1 %}
-<div class="mt-4 flex gap-4">
-  <a href="/reports?page={{ page - 1 }}" class="text-sm text-sky-400 hover:underline">← Newer</a>
-  <a href="/reports?page={{ page + 1 }}" class="text-sm text-sky-400 hover:underline">Older →</a>
+<div class="flex gap-6 mb-6">
+  <a href="/reports?page={{ page - 1 }}" class="mono text-xs" style="color:#4da8ff;">← NEWER</a>
+  <a href="/reports?page={{ page + 1 }}" class="mono text-xs" style="color:#4da8ff;">OLDER →</a>
 </div>
 {% endif %}
 
+<div id="report-viewer" class="rounded overflow-hidden" style="min-height:200px;border:1px solid #162740;">
+  <p class="mono text-xs text-center py-10" style="color:#2a4060;">SELECT A REPORT TO VIEW</p>
+</div>
+
 {% else %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
-  <p class="text-slate-400 text-lg mb-2">No reports yet</p>
-  <p class="text-slate-500 text-sm">Daily digests are generated automatically at your configured digest time.</p>
+<div class="card p-16 text-center" style="border-radius:2px;">
+  <p class="mono text-xs mb-2" style="color:#2a4060;">NO REPORTS GENERATED</p>
+  <p class="text-sm" style="color:#5a7a9a;">Click Generate Report or wait for the scheduled digest time.</p>
 </div>
 {% endif %}
 

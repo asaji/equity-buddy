@@ -54,6 +54,16 @@ def _merge(base: dict, override: dict) -> dict:
     return result
 
 
+def save_config(updates: dict) -> None:
+    """Merge updates into the live config and persist to disk."""
+    global _config
+    _config = _merge(get(), updates)
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(_config, f, default_flow_style=False, allow_unicode=True)
+    logger.info("Config saved to %s", CONFIG_PATH)
+
+
 def _warn_missing(cfg: dict) -> None:
     if not cfg.get("gemini_api_key"):
         logger.warning("gemini_api_key is not set — extraction and enrichment disabled")

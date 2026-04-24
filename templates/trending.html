@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-5">
+  <div>
+    <h1 class="page-title">Trending Tickers</h1>
+    <p class="mono text-xs mt-0.5" style="color:#2a4060;">MOST MENTIONED ACROSS ALL SOURCES</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="label" style="color:#5a7a9a;">Window:</span>
+    {% for d in [7, 14, 30] %}
+    <a href="/trending?days={{ d }}"
+       class="btn-ghost"
+       style="{% if days == d %}border-color:#00d97e;color:#00d97e;{% endif %}">
+      {{ d }}D
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if not tickers %}
+<div class="card p-10 text-center" style="border-radius:2px;">
+  <p class="mono text-sm" style="color:#2a4060;">NO DATA YET — run a scrape cycle to start tracking mentions</p>
+</div>
+{% else %}
+
+<!-- Summary stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">Unique Tickers</p>
+    <p class="mono text-3xl font-semibold" style="color:#4da8ff;">{{ tickers | length }}</p>
+  </div>
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">Total Mentions</p>
+    <p class="mono text-3xl font-semibold" style="color:#c8dff5;">{{ tickers | sum(attribute='mention_count') }}</p>
+  </div>
+  <div class="stat-card" style="border-radius:2px;">
+    <p class="label mb-2" style="color:#5a7a9a;">High Conviction</p>
+    <p class="mono text-3xl font-semibold" style="color:#00d97e;">{{ tickers | sum(attribute='high_conviction_count') }}</p>
+  </div>
+</div>
+
+<!-- Top 5 visual bar chart -->
+{% if tickers %}
+<div class="card p-5 mb-5" style="border-radius:2px;">
+  <p class="label mb-4" style="color:#2a4060;">TOP TICKERS — {{ days }}-DAY WINDOW</p>
+  {% set max_mentions = tickers[0].mention_count %}
+  {% for t in tickers[:10] %}
+  <div class="flex items-center gap-4 mb-2.5">
+    <a href="/ticker/{{ t.ticker }}" class="ticker text-sm w-16 shrink-0" style="color:#4da8ff;">{{ t.ticker }}</a>
+    <div class="flex-1 relative" style="height:20px;background:#071626;border:1px solid #0f2035;border-radius:2px;">
+      {% set bullish_pct = (t.bullish_count / t.mention_count * 100) | round(0) | int %}
+      {% set bearish_pct = (t.bearish_count / t.mention_count * 100) | round(0) | int %}
+      {% set bar_pct = (t.mention_count / max_mentions * 100) | round(0) | int %}
+      <div style="position:absolute;top:0;left:0;bottom:0;width:{{ bar_pct }}%;
+                  background:{% if t.bullish_count > t.bearish_count %}rgba(0,217,126,0.2){% elif t.bearish_count > t.bullish_count %}rgba(255,77,77,0.2){% else %}rgba(77,168,255,0.2){% endif %};
+                  border-right:1px solid {% if t.bullish_count > t.bearish_count %}#00d97e{% elif t.bearish_count > t.bullish_count %}#ff4d4d{% else %}#4da8ff{% endif %};
+                  transition:width 0.3s;"></div>
+      <span class="mono text-xs absolute right-2 top-0 bottom-0 flex items-center" style="color:#5a7a9a;">
+        {{ t.mention_count }} mention{{ 's' if t.mention_count != 1 else '' }}
+      </span>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0" style="width:130px;">
+      {% if t.bullish_count > 0 %}
+      <span class="badge badge-green">↑ {{ t.bullish_count }}</span>
+      {% endif %}
+      {% if t.bearish_count > 0 %}
+      <span class="badge badge-red">↓ {{ t.bearish_count }}</span>
+      {% endif %}
+      {% if t.source_count > 1 %}
+      <span class="badge badge-blue">{{ t.source_count }}S</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Full table -->
+<div class="card" style="border-radius:2px;overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="w-full data-table" style="min-width:600px;">
+    <thead>
+      <tr>
+        <th class="text-left" style="width:40px;">#</th>
+        <th class="text-left">Ticker</th>
+        <th class="text-center">Mentions</th>
+        <th class="text-center">Sources</th>
+        <th class="text-center">Bullish</th>
+        <th class="text-center">Bearish</th>
+        <th class="text-center">High Conv.</th>
+        <th class="text-left">Authors</th>
+        <th class="text-left">Last Seen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickers %}
+      {% set net = t.bullish_count - t.bearish_count %}
+      <tr>
+        <td><span class="mono text-xs" style="color:#2a4060;">{{ loop.index }}</span></td>
+        <td>
+          <a href="/ticker/{{ t.ticker }}" class="ticker text-sm" style="color:#4da8ff;text-decoration:none;">
+            {{ t.ticker }}
+          </a>
+          {% if t.high_conviction_count > 0 %}
+          <span class="badge badge-amber ml-2">HC</span>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          <span class="mono text-sm font-semibold"
+                style="color:{% if net > 0 %}#00d97e{% elif net < 0 %}#ff4d4d{% else %}#c8dff5{% endif %};">
+            {{ t.mention_count }}
+          </span>
+        </td>
+        <td class="text-center">
+          <span class="mono text-xs" style="color:#5a7a9a;">{{ t.source_count }}</span>
+        </td>
+        <td class="text-center">
+          {% if t.bullish_count > 0 %}
+          <span class="mono text-xs" style="color:#00d97e;">{{ t.bullish_count }}</span>
+          {% else %}
+          <span style="color:#162740;">—</span>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          {% if t.bearish_count > 0 %}
+          <span class="mono text-xs" style="color:#ff4d4d;">{{ t.bearish_count }}</span>
+          {% else %}
+          <span style="color:#162740;">—</span>
+          {% endif %}
+        </td>
+        <td class="text-center">
+          {% if t.high_conviction_count > 0 %}
+          <span class="mono text-xs" style="color:#f5a623;">{{ t.high_conviction_count }}</span>
+          {% else %}
+          <span style="color:#162740;">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if t.authors %}
+          <div class="flex flex-wrap gap-1">
+            {% for author in t.authors.split(',') %}
+            <span class="mono text-xs" style="color:#5a7a9a;">@{{ author }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          <span class="mono text-xs" style="color:#2a4060;">{{ t.last_seen[:10] if t.last_seen else '—' }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

@@ -5,13 +5,13 @@ pushover:
   api_token: ""
 
 # Optional: base URL of the web UI used for deep links in Pushover notifications
-# Example: http://192.168.1.100:7842
+# Example: http://192.168.1.100:7003
 base_url: ""
 
 schedule:
   scrape_interval_hours: 2
   digest_time: "07:00"
-  timezone: "America/Chicago"
+  timezone: "America/Los_Angeles"
 
 conviction_alert_threshold: "high"
 

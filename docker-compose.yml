@@ -8,7 +8,7 @@
 #    and fill in your API keys
 # 4. In Docker Compose Manager, paste this file or point to its path
 # 5. Click "Compose Up"
-# 6. After first start, navigate to http://<UNRAID-IP>:7842/auth/twitter
+# 6. After first start, navigate to http://<UNRAID-IP>:7003/auth/twitter
 #    to complete Twitter authentication (saves cookies — no docker exec needed)
 #
 # PUID/PGID: set to match your Unraid user (default 99/100 for nobody)
@@ -33,12 +33,12 @@ services:
     build: .
     container_name: equitybuddy-web
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7842"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7003"]
     environment:
       - PUID=${PUID:-99}
       - PGID=${PGID:-100}
     ports:
-      - "0.0.0.0:7842:7842"
+      - "0.0.0.0:7003:7003"
     volumes:
       - equitybuddy-data:/app/data
       - /mnt/user/appdata/equitybuddy/config.yaml:/app/config.yaml:ro

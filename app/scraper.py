@@ -6,6 +6,8 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import re
+
 import feedparser
 
 from . import database as db
@@ -115,6 +117,31 @@ def _patch_twikit_client(_client) -> None:
         logger.info("twikit ClientTransaction patched — KEY_BYTE fetch bypassed")
     except Exception as e:
         logger.warning("Could not patch twikit ClientTransaction: %s", e)
+
+
+def get_cookie_status() -> dict:
+    """Return expiry info for the Twitter auth_token cookie."""
+    if not os.path.exists(COOKIES_PATH):
+        return {"status": "missing", "message": "Cookie file not found", "days_remaining": None}
+    try:
+        with open(COOKIES_PATH) as f:
+            raw = json.load(f)
+        if not isinstance(raw, list):
+            return {"status": "unknown", "message": "Unrecognised cookie format", "days_remaining": None}
+        auth = next((c for c in raw if isinstance(c, dict) and c.get("name") == "auth_token"), None)
+        if not auth:
+            return {"status": "missing", "message": "auth_token not found in cookie file", "days_remaining": None}
+        exp = auth.get("expirationDate") or auth.get("expires") or auth.get("expiry")
+        if not exp:
+            return {"status": "ok", "message": "No expiry date (session cookie)", "days_remaining": None}
+        days = (datetime.fromtimestamp(float(exp)) - datetime.now()).days
+        if days < 0:
+            return {"status": "expired", "message": f"Expired {abs(days)} days ago", "days_remaining": days}
+        if days < 7:
+            return {"status": "expiring", "message": f"Expires in {days} days — re-export soon", "days_remaining": days}
+        return {"status": "ok", "message": f"Valid for {days} more days", "days_remaining": days}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "days_remaining": None}
 
 
 def _read_cookies_as_dict() -> Optional[dict]:
@@ -231,6 +258,7 @@ async def scrape_twitter(handles: list[str]) -> int:
         try:
             user = await client.get_user_by_screen_name(handle)
             tweets = await client.get_user_tweets(user.id, "Tweets", count=50)
+            logger.info("@%s: fetched %d tweets from API", handle, len(tweets))
             for tweet in tweets:
                 try:
                     pub_dt = getattr(tweet, "created_at_datetime", None)
@@ -291,10 +319,12 @@ def scrape_substack(rss_urls: list[str]) -> int:
                     else:
                         pub_dt = None
 
-                    if pub_dt and not _is_recent(pub_dt):
+                    if pub_dt and not _is_recent(pub_dt, hours=168):
                         continue
 
-                    content = entry.get("summary", "") or entry.get("content", [{}])[0].get("value", "")
+                    html = (entry.get("content") or [{}])[0].get("value", "") or entry.get("summary", "")
+                    content = re.sub(r"<[^>]+>", " ", html)
+                    content = re.sub(r"\s+", " ", content).strip()
                     entry_url = entry.get("link", url)
                     content_hash = _hash(f"{url}:{entry.get('id', entry_url)}:{content[:200]}")
 

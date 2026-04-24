@@ -4,8 +4,8 @@
     {
       "name": "equitybuddy-web",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "CONFIG_PATH=/tmp/equitybuddy/config.yaml DB_PATH=/tmp/equitybuddy/data/equitybuddy.db COOKIES_PATH=/tmp/equitybuddy/cookies/twitter_cookies.json .venv/bin/uvicorn app.main:app --port 7842 --reload"],
-      "port": 7842
+      "runtimeArgs": ["-c", "CONFIG_PATH=/tmp/equitybuddy/config.yaml DB_PATH=/tmp/equitybuddy/data/equitybuddy.db COOKIES_PATH=/tmp/equitybuddy/cookies/twitter_cookies.json .venv/bin/uvicorn app.main:app --port 7003 --reload"],
+      "port": 7003
     }
   ]
 }

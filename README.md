@@ -43,18 +43,18 @@ You can leave `accounts.twitter` and `accounts.substack` empty — they can be m
 
 ### 4. Authenticate Twitter (first run)
 
-Navigate to `http://<UNRAID-IP>:7842/auth/twitter` and enter your Twitter username, email, and password. This generates session cookies saved to `/mnt/user/appdata/equitybuddy/cookies/twitter_cookies.json`. You only need to do this once (or if cookies expire).
+Navigate to `http://<UNRAID-IP>:7003/auth/twitter` and enter your Twitter username, email, and password. This generates session cookies saved to `/mnt/user/appdata/equitybuddy/cookies/twitter_cookies.json`. You only need to do this once (or if cookies expire).
 
 ### 5. Add sources
 
-Go to `http://<UNRAID-IP>:7842/watchlist` and add:
+Go to `http://<UNRAID-IP>:7003/watchlist` and add:
 - Twitter handles (e.g. `unusual_whales`, `TihoBrkan`)
 - Substack RSS URLs (e.g. `https://example.substack.com/feed`)
 
 ### 6. Access the web UI
 
 ```
-http://<UNRAID-IP>:7842
+http://<UNRAID-IP>:7003
 ```
 
 Find your Unraid IP in the Unraid dashboard under **Info**, or run `ip addr` in the Unraid terminal.

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="page-title">Search</h1>
+  <p class="mono text-xs mt-0.5" style="color:#2a4060;">SEARCH IDEAS BY TICKER OR THESIS</p>
+</div>
+
+<form method="get" action="/search" class="flex gap-3 mb-6 max-w-xl">
+  <input name="q" type="text" value="{{ q }}"
+         placeholder="NVDA, semiconductor, AI inference…"
+         class="flex-1" autofocus autocomplete="off" />
+  <button type="submit" class="btn-primary shrink-0">Search</button>
+</form>
+
+{% if q and not results %}
+<div class="card p-10 text-center max-w-xl" style="border-radius:2px;">
+  <p class="mono text-sm" style="color:#2a4060;">No ideas found for "{{ q }}"</p>
+</div>
+
+{% elif results %}
+<div class="flex items-center justify-between mb-3">
+  <span class="mono text-xs" style="color:#2a4060;">{{ results|length }} result{{ 's' if results|length != 1 else '' }} for "{{ q }}"</span>
+</div>
+
+<div class="card" style="border-radius:2px;overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="w-full data-table" style="min-width:560px;">
+    <thead>
+      <tr>
+        <th class="text-left" style="width:80px;">Ticker</th>
+        <th class="text-left" style="width:110px;">Author</th>
+        <th class="text-left" style="width:80px;">Conv.</th>
+        <th class="text-left" style="width:80px;">Sentiment</th>
+        <th class="text-left">Thesis</th>
+        <th class="text-left" style="width:90px;">Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for idea in results %}
+      <tr class="cursor-pointer" onclick="toggleQuote('q-{{ idea.id }}')">
+        <td>
+          <a href="/ticker/{{ idea.ticker }}" class="ticker" onclick="event.stopPropagation()"
+             style="color:#00d97e;font-size:0.95rem;text-decoration:none;border-bottom:1px solid rgba(0,217,126,0.3);">
+            {{ idea.ticker }}
+          </a>
+        </td>
+        <td>
+          <span class="mono text-xs" style="color:#4da8ff;">@{{ idea.author }}</span>
+          <span class="label block mt-0.5" style="color:#2a4060;">{{ idea.source_type }}</span>
+        </td>
+        <td>
+          {% if idea.conviction == 'high' %}
+          <span class="label" style="color:#00d97e;">HIGH</span>
+          {% elif idea.conviction == 'medium' %}
+          <span class="label" style="color:#f5a623;">MED</span>
+          {% else %}
+          <span class="label" style="color:#2a4060;">LOW</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if idea.sentiment == 'bullish' %}
+          <span class="badge badge-green">BULL</span>
+          {% else %}
+          <span class="badge badge-red">BEAR</span>
+          {% endif %}
+        </td>
+        <td>
+          <p class="text-xs leading-relaxed" style="color:#8aabcc;max-width:400px;">{{ idea.thesis }}</p>
+        </td>
+        <td>
+          <span class="mono text-xs" style="color:#2a4060;">{{ idea.extracted_at[:10] }}</span>
+        </td>
+      </tr>
+      <tr id="q-{{ idea.id }}" style="display:none;background:#071626;">
+        <td colspan="6" style="padding:12px 16px 12px 32px;border-bottom:1px solid #0f2035;">
+          <div class="flex gap-8 items-start">
+            {% if idea.quote %}
+            <div style="flex:1;">
+              <p class="label mb-2" style="color:#2a4060;">Quote</p>
+              <p class="text-sm italic leading-relaxed" style="color:#5a7a9a;border-left:2px solid #162740;padding-left:12px;">"{{ idea.quote }}"</p>
+            </div>
+            {% endif %}
+            <div class="flex flex-col gap-2 shrink-0">
+              {% if idea.url %}
+              <a href="{{ idea.url }}" target="_blank" class="mono text-xs"
+                 style="color:#4da8ff;text-decoration:none;border-bottom:1px solid rgba(77,168,255,0.3);">
+                View Source →
+              </a>
+              {% endif %}
+              <form hx-post="/watchlist-stocks/track-idea" hx-target="this" hx-swap="outerHTML"
+                    onclick="event.stopPropagation()">
+                <input type="hidden" name="ticker" value="{{ idea.ticker }}" />
+                <input type="hidden" name="idea_id" value="{{ idea.id }}" />
+                <button type="submit" class="btn-ghost">+ Track</button>
+              </form>
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% elif not q %}
+<div class="card p-8 max-w-xl" style="border-radius:2px;">
+  <p class="label mb-3" style="color:#2a4060;">SEARCH TIPS</p>
+  <ul class="space-y-2 text-sm" style="color:#5a7a9a;">
+    <li><span class="ticker text-xs" style="color:#4da8ff;">NVDA</span> — exact ticker match</li>
+    <li><span class="mono text-xs" style="color:#4da8ff;">semi</span> — partial ticker or thesis keyword</li>
+    <li><span class="mono text-xs" style="color:#4da8ff;">AI inference</span> — phrase in thesis or quote</li>
+  </ul>
+</div>
+{% endif %}
+
+<script>
+function toggleQuote(id) {
+  const row = document.getElementById(id);
+  if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+</script>
+
+{% endblock %}

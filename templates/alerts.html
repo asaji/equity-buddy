@@ -1,58 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h1 class="text-2xl font-bold mb-6">Alert Log</h1>
+<div class="mb-5">
+  <h1 class="page-title">Alert Log</h1>
+  <p class="mono text-xs mt-0.5" style="color:#2a4060;">FIRED NOTIFICATIONS</p>
+</div>
 
 {% if alerts %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-  <table class="w-full text-sm">
-    <thead class="bg-slate-900 text-slate-400 text-xs uppercase tracking-wider">
+<div class="card" style="border-radius:2px;overflow:hidden;">
+  <div style="overflow-x:auto;">
+  <table class="w-full data-table" style="min-width:500px;">
+    <thead>
       <tr>
-        <th class="px-4 py-3 text-left">Time</th>
-        <th class="px-4 py-3 text-left">Type</th>
-        <th class="px-4 py-3 text-left">Ticker</th>
-        <th class="px-4 py-3 text-left">Message</th>
-        <th class="px-4 py-3 text-left">Track</th>
+        <th class="text-left" style="width:130px;">Time</th>
+        <th class="text-left" style="width:80px;">Type</th>
+        <th class="text-left" style="width:90px;">Ticker</th>
+        <th class="text-left">Message</th>
+        <th class="text-left" style="width:80px;">Action</th>
       </tr>
     </thead>
-    <tbody class="divide-y divide-slate-700">
+    <tbody>
       {% for alert in alerts %}
-      <tr class="hover:bg-slate-750 transition-colors">
-        <td class="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
-          {{ alert.sent_at[:16].replace('T', ' ') }}
-        </td>
-        <td class="px-4 py-3">
+      <tr>
+        <td><span class="mono text-xs" style="color:#2a4060;">{{ alert.sent_at[:16].replace('T', ' ') }}</span></td>
+        <td>
           {% if alert.alert_type == 'idea' %}
-          <span class="bg-emerald-900/50 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded text-xs">idea</span>
+          <span class="badge badge-green">IDEA</span>
           {% else %}
-          <span class="bg-amber-900/50 text-amber-400 border border-amber-700 px-2 py-0.5 rounded text-xs">price</span>
+          <span class="badge badge-amber">PRICE</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3 font-bold text-white">{{ alert.ticker }}</td>
-        <td class="px-4 py-3 text-slate-300 text-xs max-w-md">
-          <p class="whitespace-pre-wrap leading-relaxed">{{ alert.message }}</p>
+        <td><span class="ticker" style="color:#c8dff5;font-size:0.9rem;">{{ alert.ticker }}</span></td>
+        <td>
+          <p class="text-xs leading-relaxed" style="color:#5a7a9a;max-width:500px;white-space:pre-wrap;">{{ alert.message }}</p>
         </td>
-        <td class="px-4 py-3">
-          <form hx-post="/watchlist-stocks/add" hx-target="#watchlist-stocks-content" hx-swap="outerHTML">
+        <td>
+          <form hx-post="/watchlist-stocks/track-idea" hx-target="this" hx-swap="outerHTML">
             <input type="hidden" name="ticker" value="{{ alert.ticker }}" />
-            {% if alert.idea_id %}
-            <input type="hidden" name="idea_id" value="{{ alert.idea_id }}" />
-            {% endif %}
-            <button type="submit"
-              class="text-xs bg-slate-700 hover:bg-emerald-700 border border-slate-600 hover:border-emerald-600 text-slate-300 hover:text-white px-2 py-1 rounded transition-colors">
-              + Track
-            </button>
+            {% if alert.idea_id %}<input type="hidden" name="idea_id" value="{{ alert.idea_id }}" />{% endif %}
+            <button type="submit" class="btn-ghost">+ Track</button>
           </form>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% else %}
-<div class="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center">
-  <p class="text-slate-400 text-lg mb-2">No alerts yet</p>
-  <p class="text-slate-500 text-sm">Alerts fire when high-conviction ideas are found or watchlist price milestones are crossed.</p>
+<div class="card p-16 text-center" style="border-radius:2px;">
+  <p class="mono text-xs mb-2" style="color:#2a4060;">NO ALERTS FIRED</p>
+  <p class="text-sm" style="color:#5a7a9a;">Alerts fire on high-conviction ideas or watchlist price milestones.</p>
 </div>
 {% endif %}
 

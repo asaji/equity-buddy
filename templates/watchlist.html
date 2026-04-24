@@ -1,103 +1,163 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h1 class="text-2xl font-bold mb-6">Sources</h1>
+<div class="mb-5">
+  <h1 class="page-title">Sources</h1>
+  <p class="mono text-xs mt-0.5" style="color:#2a4060;">MONITORED ACCOUNTS & FEEDS</p>
+</div>
 
-<div id="watchlist-content" class="grid grid-cols-2 gap-6">
+<div id="watchlist-content" class="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
   <!-- Twitter -->
-  <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
-    <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
-      <span class="text-sky-400">𝕏</span> Twitter / X Accounts
-    </h2>
+  <div class="card p-5" style="border-radius:2px;">
+    <div class="flex items-center gap-2 mb-4" style="border-bottom:1px solid #0f2035;padding-bottom:12px;">
+      <span class="mono font-semibold text-sm" style="color:#4da8ff;">𝕏</span>
+      <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.05em;color:#c8dff5;">TWITTER / X</h2>
+      <span class="mono text-xs ml-auto" style="color:#2a4060;">{{ twitter_accounts | selectattr('is_active') | list | length }} / {{ twitter_accounts | length }} active</span>
+    </div>
 
-    <form hx-post="/watchlist/twitter/add"
-          hx-target="#watchlist-content"
-          hx-swap="outerHTML"
-          class="flex gap-2 mb-4">
-      <input name="handle" type="text" placeholder="@handle or handle"
-        class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
-      <button type="submit"
-        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded text-sm font-medium">
-        Add
-      </button>
+    <form hx-post="/watchlist/twitter/add" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content" class="flex gap-2 mb-4">
+      <input name="handle" type="text" placeholder="@handle" class="flex-1" />
+      <button type="submit" class="btn-primary shrink-0">Add</button>
     </form>
 
     {% if twitter_accounts %}
-    <ul class="space-y-2">
-      {% for handle in twitter_accounts %}
-      <li class="flex items-center justify-between bg-slate-900 rounded px-3 py-2">
-        <a href="https://x.com/{{ handle }}" target="_blank"
-           class="text-sm text-sky-400 hover:text-sky-300">@{{ handle }}</a>
-        <form hx-post="/watchlist/twitter/remove"
-              hx-target="#watchlist-content"
-              hx-swap="outerHTML">
-          <input type="hidden" name="handle" value="{{ handle }}" />
-          <button type="submit"
-            class="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-red-900/30">
-            Remove
-          </button>
-        </form>
+    <ul class="space-y-1.5">
+      {% for acct in twitter_accounts %}
+      <li class="flex items-center justify-between" style="background:#071626;padding:8px 12px;border:1px solid {% if acct.is_active %}#0f2035{% else %}rgba(90,122,154,0.15){% endif %};">
+        <div class="flex items-center gap-2">
+          <a href="https://x.com/{{ acct.value }}" target="_blank" class="mono text-sm"
+             style="color:{% if acct.is_active %}#4da8ff{% else %}#2a4060{% endif %};text-decoration:none;">@{{ acct.value }}</a>
+          {% if not acct.is_active %}
+          <span class="badge badge-dim">PAUSED</span>
+          {% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+          <form hx-post="/watchlist/source/toggle" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content">
+            <input type="hidden" name="source_type" value="twitter" />
+            <input type="hidden" name="value" value="{{ acct.value }}" />
+            <button type="submit" class="mono text-xs" style="color:#2a4060;background:none;border:none;cursor:pointer;transition:color 0.15s;"
+                    onmouseover="this.style.color='#5a7a9a'" onmouseout="this.style.color='#2a4060'">
+              {% if acct.is_active %}PAUSE{% else %}RESUME{% endif %}
+            </button>
+          </form>
+          <form hx-post="/watchlist/twitter/remove" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content">
+            <input type="hidden" name="handle" value="{{ acct.value }}" />
+            <button type="submit" class="mono text-xs" style="color:#3d1212;background:none;border:none;cursor:pointer;transition:color 0.15s;" onmouseover="this.style.color='#ff4d4d'" onmouseout="this.style.color='#3d1212'">REMOVE</button>
+          </form>
+        </div>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <p class="text-slate-500 text-sm">No Twitter accounts configured yet.</p>
+    <p class="mono text-xs" style="color:#2a4060;">NO ACCOUNTS CONFIGURED</p>
     {% endif %}
   </div>
 
   <!-- Substack -->
-  <div class="bg-slate-800 rounded-lg border border-slate-700 p-5">
-    <h2 class="text-base font-semibold mb-4 flex items-center gap-2">
-      <span class="text-orange-400">◎</span> Substack RSS Feeds
-    </h2>
+  <div class="card p-5" style="border-radius:2px;">
+    <div class="flex items-center gap-2 mb-4" style="border-bottom:1px solid #0f2035;padding-bottom:12px;">
+      <span class="font-semibold text-sm" style="color:#f5a623;">◎</span>
+      <h2 style="font-family:'IBM Plex Sans Condensed',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.05em;color:#c8dff5;">SUBSTACK RSS</h2>
+      <span class="mono text-xs ml-auto" style="color:#2a4060;">{{ substack_urls | selectattr('is_active') | list | length }} / {{ substack_urls | length }} active</span>
+    </div>
 
-    <form hx-post="/watchlist/substack/add"
-          hx-target="#watchlist-content"
-          hx-swap="outerHTML"
-          class="flex gap-2 mb-4">
-      <input name="url" type="url" placeholder="https://author.substack.com/feed"
-        class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500" />
-      <button type="submit"
-        class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded text-sm font-medium">
-        Add
-      </button>
+    <form hx-post="/watchlist/substack/add" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content" class="flex gap-2 mb-4">
+      <input name="url" type="url" placeholder="https://author.substack.com/feed" class="flex-1" />
+      <button type="submit" class="btn-primary shrink-0">Add</button>
     </form>
 
     {% if substack_urls %}
-    <ul class="space-y-2">
-      {% for url in substack_urls %}
-      <li class="flex items-center justify-between bg-slate-900 rounded px-3 py-2">
-        <a href="{{ url }}" target="_blank"
-           class="text-sm text-orange-400 hover:text-orange-300 truncate max-w-xs">{{ url }}</a>
-        <form hx-post="/watchlist/substack/remove"
-              hx-target="#watchlist-content"
-              hx-swap="outerHTML">
-          <input type="hidden" name="url" value="{{ url }}" />
-          <button type="submit"
-            class="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-red-900/30 ml-2 shrink-0">
-            Remove
-          </button>
-        </form>
+    <ul class="space-y-1.5">
+      {% for acct in substack_urls %}
+      <li class="flex items-center justify-between" style="background:#071626;padding:8px 12px;border:1px solid {% if acct.is_active %}#0f2035{% else %}rgba(90,122,154,0.15){% endif %};">
+        <div class="flex items-center gap-2 min-w-0">
+          <a href="{{ acct.value }}" target="_blank" class="text-xs truncate"
+             style="color:{% if acct.is_active %}#f5a623{% else %}#2a4060{% endif %};text-decoration:none;font-family:'IBM Plex Mono',monospace;max-width:180px;">{{ acct.value }}</a>
+          {% if not acct.is_active %}
+          <span class="badge badge-dim shrink-0">PAUSED</span>
+          {% endif %}
+        </div>
+        <div class="flex items-center gap-3 shrink-0 ml-2">
+          <form hx-post="/watchlist/source/toggle" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content">
+            <input type="hidden" name="source_type" value="substack" />
+            <input type="hidden" name="value" value="{{ acct.value }}" />
+            <button type="submit" class="mono text-xs" style="color:#2a4060;background:none;border:none;cursor:pointer;transition:color 0.15s;"
+                    onmouseover="this.style.color='#5a7a9a'" onmouseout="this.style.color='#2a4060'">
+              {% if acct.is_active %}PAUSE{% else %}RESUME{% endif %}
+            </button>
+          </form>
+          <form hx-post="/watchlist/substack/remove" hx-target="#watchlist-content" hx-swap="outerHTML" hx-select="#watchlist-content">
+            <input type="hidden" name="url" value="{{ acct.value }}" />
+            <button type="submit" class="mono text-xs" style="color:#3d1212;background:none;border:none;cursor:pointer;transition:color 0.15s;" onmouseover="this.style.color='#ff4d4d'" onmouseout="this.style.color='#3d1212'">REMOVE</button>
+          </form>
+        </div>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <p class="text-slate-500 text-sm">No Substack feeds configured yet.</p>
+    <p class="mono text-xs" style="color:#2a4060;">NO FEEDS CONFIGURED</p>
     {% endif %}
   </div>
 
 </div>
 
-<div class="mt-6 bg-slate-800 rounded-lg border border-slate-700 p-4">
-  <p class="text-xs text-slate-400">
-    <span class="text-amber-400 font-medium">Note:</span>
-    Changes are saved to <code class="text-slate-300">/app/config.yaml</code>.
-    If the config file is read-only, changes apply for this session only.
-    Twitter requires authentication — visit
-    <a href="/auth/twitter" class="text-emerald-400 hover:underline">/auth/twitter</a>
-    if you haven't set up cookies yet.
-  </p>
+<!-- Cookie status -->
+<div class="mt-5 p-3 flex items-center gap-3" style="border:1px solid {% if cookie_status.status == 'ok' %}#0f2035{% elif cookie_status.status == 'expiring' %}rgba(245,166,35,0.3){% else %}rgba(255,77,77,0.3){% endif %};border-radius:2px;">
+  {% if cookie_status.status == 'ok' %}
+  <span class="badge badge-green">COOKIES OK</span>
+  {% elif cookie_status.status == 'expiring' %}
+  <span class="badge badge-amber">EXPIRING SOON</span>
+  {% elif cookie_status.status == 'missing' %}
+  <span class="badge badge-red">NO COOKIES</span>
+  {% elif cookie_status.status == 'expired' %}
+  <span class="badge badge-red">EXPIRED</span>
+  {% else %}
+  <span class="badge badge-dim">UNKNOWN</span>
+  {% endif %}
+  <span class="mono text-xs" style="color:#5a7a9a;">{{ cookie_status.message }}</span>
+  <a href="/auth/twitter" class="mono text-xs ml-auto" style="color:#4da8ff;">re-authenticate →</a>
 </div>
+
+<!-- Scrape health -->
+{% if scrape_health %}
+<div class="mt-5">
+  <p class="label mb-3" style="color:#2a4060;">SCRAPE ACTIVITY — LAST 7 DAYS</p>
+  <div class="card" style="border-radius:2px;overflow:hidden;">
+    <table class="w-full data-table">
+      <thead>
+        <tr>
+          <th class="text-left">Source</th>
+          <th class="text-left" style="width:80px;">Type</th>
+          {% set all_days = scrape_health.values() | sum(start=[]) | map(attribute='day') | unique | sort | reverse | list %}
+          {% for day in all_days[:7] %}
+          <th class="text-center" style="width:70px;">{{ day[5:] }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for author, rows in scrape_health.items() %}
+        {% set day_map = {} %}
+        {% for r in rows %}{% set _ = day_map.update({r.day: r.post_count}) %}{% endfor %}
+        <tr>
+          <td><span class="mono text-xs" style="color:#c8dff5;">{{ author }}</span></td>
+          <td><span class="label" style="color:#2a4060;">{{ rows[0].source_type }}</span></td>
+          {% for day in all_days[:7] %}
+          {% set count = day_map.get(day, 0) %}
+          <td class="text-center">
+            {% if count > 0 %}
+            <span class="mono text-xs" style="color:#00d97e;">{{ count }}</span>
+            {% else %}
+            <span class="mono text-xs" style="color:#162740;">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 {% endblock %}

@@ -4,7 +4,7 @@ from typing import Optional
 
 from google import genai
 from google.genai import types
-import yfinance as yf
+from yahooquery import Ticker as YQTicker
 
 from . import database as db
 from .config import get as get_config
@@ -27,63 +27,83 @@ Market cap: ${market_cap_b}B
 Freshness signal: {freshness}"""
 
 
-def _fetch_yfinance(ticker: str) -> Optional[dict]:
+
+def _fetch_market_data(tickers: list[str]) -> dict[str, Optional[dict]]:
     try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
-
-        hist_3m = t.history(period="3mo")
-        hist_1m = t.history(period="1mo")
-        hist_1w = t.history(period="5d")
-
-        def pct_change(hist):
-            if hist is None or len(hist) < 2:
-                return None
-            start = hist["Close"].iloc[0]
-            end = hist["Close"].iloc[-1]
-            if start == 0:
-                return None
-            return round((end - start) / start * 100, 2)
-
-        current_price = info.get("currentPrice") or info.get("regularMarketPrice")
-        week52_high = info.get("fiftyTwoWeekHigh")
-        week52_low = info.get("fiftyTwoWeekLow")
-        volume = info.get("regularMarketVolume")
-        avg_volume = info.get("averageVolume")
-        market_cap = info.get("marketCap")
-        pe_ratio = info.get("trailingPE")
-        revenue_growth = info.get("revenueGrowth")
-        short_interest = info.get("shortPercentOfFloat")
-
-        p3m = pct_change(hist_3m)
-        p1m = pct_change(hist_1m)
-        p1w = pct_change(hist_1w)
-
-        freshness = "in_motion"
-        if p3m is not None and week52_high:
-            if p3m < 15 and current_price and current_price < week52_high * 0.7:
-                freshness = "early"
-            elif p3m > 30 or (current_price and current_price > week52_high * 0.9):
-                freshness = "may_have_moved"
-
-        return {
-            "current_price": current_price,
-            "week52_high": week52_high,
-            "week52_low": week52_low,
-            "pct_change_1w": p1w,
-            "pct_change_1m": p1m,
-            "pct_change_3m": p3m,
-            "volume": volume,
-            "avg_volume_30d": avg_volume,
-            "market_cap": market_cap,
-            "pe_ratio": pe_ratio,
-            "revenue_growth_yoy": revenue_growth,
-            "short_interest": short_interest,
-            "freshness_signal": freshness,
-        }
+        t = YQTicker(tickers)
+        summaries = t.summary_detail
+        key_stats = t.key_stats
+        hist = t.history(period="3mo", interval="1d")
     except Exception as e:
-        logger.warning("yfinance error for %s: %s", ticker, e)
-        return None
+        logger.warning("yahooquery batch fetch error: %s", e)
+        return {ticker: None for ticker in tickers}
+
+    results = {}
+    for ticker in tickers:
+        try:
+            info = (summaries.get(ticker) or {}) if isinstance(summaries, dict) else {}
+            stats = (key_stats.get(ticker) or {}) if isinstance(key_stats, dict) else {}
+            if isinstance(info, str) or isinstance(stats, str):
+                results[ticker] = None
+                continue
+
+            ticker_hist = None
+            if hist is not None and not hist.empty:
+                try:
+                    ticker_hist = hist.xs(ticker, level=0) if ticker in hist.index.get_level_values(0) else None
+                except Exception:
+                    ticker_hist = None
+
+            def ph(period_days):
+                if ticker_hist is None or len(ticker_hist) < 2:
+                    return None
+                sliced = ticker_hist.tail(period_days)
+                if len(sliced) < 2:
+                    return None
+                start, end = sliced["close"].iloc[0], sliced["close"].iloc[-1]
+                return round((end - start) / start * 100, 2) if start else None
+
+            current_price = info.get("regularMarketPrice") or info.get("previousClose")
+            week52_high = info.get("fiftyTwoWeekHigh")
+            week52_low = info.get("fiftyTwoWeekLow")
+            market_cap = info.get("marketCap")
+            pe_ratio = info.get("trailingPE")
+            volume = info.get("regularMarketVolume")
+            avg_volume = info.get("averageDailyVolume3Month") or info.get("averageDailyVolume10Day")
+            revenue_growth = stats.get("revenueGrowth")
+            short_interest = stats.get("shortPercentOfFloat")
+
+            p3m = ph(63)
+            p1m = ph(21)
+            p1w = ph(5)
+
+            freshness = "in_motion"
+            if p3m is not None and week52_high and current_price:
+                if p3m < 15 and current_price < week52_high * 0.7:
+                    freshness = "early"
+                elif p3m > 30 or current_price > week52_high * 0.9:
+                    freshness = "may_have_moved"
+
+            results[ticker] = {
+                "current_price": current_price,
+                "week52_high": week52_high,
+                "week52_low": week52_low,
+                "pct_change_1w": p1w,
+                "pct_change_1m": p1m,
+                "pct_change_3m": p3m,
+                "volume": volume,
+                "avg_volume_30d": avg_volume,
+                "market_cap": market_cap,
+                "pe_ratio": pe_ratio,
+                "revenue_growth_yoy": revenue_growth,
+                "short_interest": short_interest,
+                "freshness_signal": freshness,
+            }
+        except Exception as e:
+            logger.warning("yahooquery parse error for %s: %s", ticker, e)
+            results[ticker] = None
+
+    return results
 
 
 def _fetch_research_summary(client: genai.Client, ticker: str, data: dict,
@@ -104,7 +124,7 @@ def _fetch_research_summary(client: genai.Client, ticker: str, data: dict,
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash-lite",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -120,31 +140,6 @@ def _fetch_research_summary(client: genai.Client, ticker: str, data: dict,
     return None
 
 
-def enrich_ticker(ticker: str) -> Optional[dict]:
-    existing = db.get_enrichment_today(ticker)
-    if existing:
-        logger.debug("Enrichment already done today for %s", ticker)
-        return existing
-
-    logger.info("Enriching %s", ticker)
-    data = _fetch_yfinance(ticker)
-    if not data:
-        logger.warning("No yfinance data for %s — skipping enrichment", ticker)
-        return None
-
-    cfg = get_config()
-    api_key = cfg.get("gemini_api_key", "")
-    if api_key:
-        client = genai.Client(api_key=api_key)
-        summary = _fetch_research_summary(client, ticker, data)
-        data["research_summary"] = summary
-    else:
-        data["research_summary"] = None
-
-    db.upsert_enrichment(ticker, data)
-    return data
-
-
 def run_enrichment(ideas: Optional[list[dict]] = None) -> int:
     if ideas is None:
         ideas = db.get_ideas_since(hours=24)
@@ -154,11 +149,38 @@ def run_enrichment(ideas: Optional[list[dict]] = None) -> int:
         logger.info("No tickers to enrich")
         return 0
 
-    enriched = 0
-    for ticker in tickers:
-        result = enrich_ticker(ticker)
-        if result:
-            enriched += 1
+    # Skip already-enriched tickers
+    to_enrich = [t for t in tickers if not db.get_enrichment_today(t)]
+    already_done = len(tickers) - len(to_enrich)
+    if already_done:
+        logger.debug("Skipping %d already-enriched tickers", already_done)
+    if not to_enrich:
+        logger.info("All tickers already enriched today")
+        return already_done
+
+    logger.info("Fetching market data for %d tickers: %s", len(to_enrich), to_enrich)
+    market_data = _fetch_market_data(to_enrich)
+
+    cfg = get_config()
+    api_key = cfg.get("gemini_api_key", "")
+    client = genai.Client(api_key=api_key) if api_key else None
+
+    enriched = already_done
+    for ticker in to_enrich:
+        data = market_data.get(ticker)
+        if not data:
+            logger.warning("No market data for %s — skipping enrichment", ticker)
+            continue
+
+        logger.info("Enriching %s", ticker)
+        if client:
+            summary = _fetch_research_summary(client, ticker, data)
+            data["research_summary"] = summary
+        else:
+            data["research_summary"] = None
+
+        db.upsert_enrichment(ticker, data)
+        enriched += 1
 
     logger.info("Enriched %d/%d tickers", enriched, len(tickers))
     return enriched

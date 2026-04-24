@@ -11,26 +11,31 @@ from .config import get as get_config
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_PROMPT = """You are a financial analyst assistant. Analyze the following social media posts and extract investment ideas.
+EXTRACTION_PROMPT = """You are a buy-side equity analyst. Analyze the following posts and extract investment ideas using two modes:
 
-For each post, identify any stock tickers mentioned and extract structured investment information.
+MODE 1 — EXPLICIT: Post directly mentions a ticker or company with an investment view.
+MODE 2 — THEMATIC: Post discusses an investment theme, trend, or concept without naming specific stocks. Infer the most relevant publicly traded beneficiaries (max 3 per post).
 
-Return a JSON array. Each element must have:
+For every idea return a JSON object with:
 - "ticker": stock symbol (uppercase, no $)
-- "conviction": "low", "medium", or "high"
+- "conviction": "high", "medium", or "low". Thematic/inferred ideas are capped at "low".
 - "sentiment": "bullish" or "bearish"
-- "thesis": 1-2 sentence investment thesis
-- "direct_quote": a key phrase directly from the post
-- "post_index": the index (0-based) of the source post in the list
+- "thesis": 1-2 sentence investment thesis. For thematic ideas, start with "[Thematic] " and explain the connection to the trend.
+- "direct_quote": a key phrase or concept from the post that supports this idea
+- "post_index": 0-based index of the source post
 
-Only include clear investment ideas with specific tickers. Skip general market commentary without specific tickers. Skip tickers that are only mentioned in passing without an investment thesis.
+Rules:
+- Explicit tickers with a clear thesis: use stated conviction level
+- Tickers only mentioned in passing (no thesis): skip
+- Thematic posts with no tickers: infer up to 3 relevant tickers, set conviction "low"
+- Purely macro/political commentary with no investable angle: skip
+- General news reposts with no analysis: skip
 
-Return valid JSON only, no explanation. Example:
-[{"ticker": "NVDA", "conviction": "high", "sentiment": "bullish", "thesis": "...", "direct_quote": "...", "post_index": 0}]
+Return valid JSON array only, no explanation.
+Example: [{"ticker": "NVDA", "conviction": "high", "sentiment": "bullish", "thesis": "...", "direct_quote": "...", "post_index": 0}]
+If nothing found: []
 
-If no investment ideas found, return an empty array: []
-
-Posts to analyze:
+Posts:
 {posts_json}"""
 
 
@@ -39,9 +44,9 @@ def _call_gemini_with_retry(client: genai.Client, prompt: str,
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash-lite",
                 contents=prompt,
-                config=types.GenerateContentConfig(max_output_tokens=4096),
+                config=types.GenerateContentConfig(max_output_tokens=8192),
             )
             return response.text
         except Exception as e:
@@ -51,6 +56,58 @@ def _call_gemini_with_retry(client: genai.Client, prompt: str,
             time.sleep(wait)
     logger.error("Gemini API failed after %d retries", max_retries)
     return None
+
+
+BATCH_SIZE = 10
+
+
+def _parse_ideas_json(raw: str) -> list:
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Truncated response — salvage complete objects by trimming to last valid ]
+        last = raw.rfind("},")
+        if last > 0:
+            try:
+                return json.loads(raw[:last + 1] + "]")
+            except json.JSONDecodeError:
+                pass
+        logger.warning("Could not parse extraction response; skipping batch")
+        return []
+
+
+def _save_ideas(ideas_data: list, posts: list) -> int:
+    total = 0
+    for item in ideas_data:
+        try:
+            post_index = item.get("post_index", 0)
+            if post_index >= len(posts):
+                continue
+            post = posts[post_index]
+            ticker = item.get("ticker", "").upper().strip()
+            if not ticker:
+                continue
+            if db.ticker_extracted_for_author_recently(ticker, post["author"]):
+                logger.debug("Skipping %s from %s — already extracted recently", ticker, post["author"])
+                continue
+            db.insert_idea(
+                post_id=post["id"],
+                ticker=ticker,
+                conviction=item.get("conviction", "low"),
+                sentiment=item.get("sentiment", "bullish"),
+                thesis=item.get("thesis", ""),
+                quote=item.get("direct_quote", ""),
+            )
+            total += 1
+        except Exception as e:
+            logger.warning("Error saving idea %s: %s", item, e)
+    return total
 
 
 def extract_ideas_from_posts(posts: list[dict]) -> int:
@@ -64,66 +121,36 @@ def extract_ideas_from_posts(posts: list[dict]) -> int:
         return 0
 
     client = genai.Client(api_key=api_key)
-
-    posts_data = [
-        {
-            "index": i,
-            "author": p["author"],
-            "source": p["source_type"],
-            "content": p["content"][:2000],
-        }
-        for i, p in enumerate(posts)
-    ]
-
-    prompt = EXTRACTION_PROMPT.replace("{posts_json}", json.dumps(posts_data, indent=2))
-    raw = _call_gemini_with_retry(client, prompt)
-    if not raw:
-        return 0
-
-    try:
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        ideas_data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse extraction response as JSON: %s\nRaw: %s", e, raw[:500])
-        return 0
-
     total = 0
-    for item in ideas_data:
-        try:
-            post_index = item.get("post_index", 0)
-            if post_index >= len(posts):
-                continue
-            post = posts[post_index]
-            ticker = item.get("ticker", "").upper().strip()
-            if not ticker:
-                continue
 
-            if db.ticker_extracted_for_author_recently(ticker, post["author"]):
-                logger.debug("Skipping %s from %s — already extracted recently", ticker, post["author"])
-                continue
+    for batch_start in range(0, len(posts), BATCH_SIZE):
+        batch = posts[batch_start:batch_start + BATCH_SIZE]
+        posts_data = [
+            {
+                "index": i,
+                "author": p["author"],
+                "source": p["source_type"],
+                "content": p["content"][:3000],
+            }
+            for i, p in enumerate(batch)
+        ]
 
-            db.insert_idea(
-                post_id=post["id"],
-                ticker=ticker,
-                conviction=item.get("conviction", "low"),
-                sentiment=item.get("sentiment", "bullish"),
-                thesis=item.get("thesis", ""),
-                quote=item.get("direct_quote", ""),
-            )
-            total += 1
-        except Exception as e:
-            logger.warning("Error saving idea %s: %s", item, e)
+        prompt = EXTRACTION_PROMPT.replace("{posts_json}", json.dumps(posts_data, indent=2))
+        raw = _call_gemini_with_retry(client, prompt)
+        if not raw:
+            continue
+
+        ideas_data = _parse_ideas_json(raw)
+        saved = _save_ideas(ideas_data, batch)
+        total += saved
+        logger.info("Batch %d-%d: extracted %d ideas", batch_start, batch_start + len(batch) - 1, saved)
 
     logger.info("Extracted %d new ideas from %d posts", total, len(posts))
     return total
 
 
 def run_extraction() -> int:
-    posts = db.get_posts_since(hours=24)
+    posts = db.get_unextracted_posts(hours=24)
     if not posts:
         logger.info("No recent posts to extract ideas from")
         return 0
