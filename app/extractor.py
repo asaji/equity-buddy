@@ -18,6 +18,7 @@ MODE 2 — THEMATIC: Post discusses an investment theme, trend, or concept witho
 
 For every idea return a JSON object with:
 - "ticker": stock symbol (uppercase, no $)
+- "idea_type": "explicit" for MODE 1 (ticker named directly), "thematic" for MODE 2 (inferred from theme)
 - "conviction": "high", "medium", or "low". Thematic/inferred ideas are capped at "low".
 - "sentiment": "bullish" or "bearish"
 - "thesis": 1-2 sentence investment thesis. For thematic ideas, start with "[Thematic] " and explain the connection to the trend.
@@ -27,12 +28,12 @@ For every idea return a JSON object with:
 Rules:
 - Explicit tickers with a clear thesis: use stated conviction level
 - Tickers only mentioned in passing (no thesis): skip
-- Thematic posts with no tickers: infer up to 3 relevant tickers, set conviction "low"
+- Thematic posts with no tickers: infer up to 3 relevant tickers, set conviction "low", idea_type "thematic"
 - Purely macro/political commentary with no investable angle: skip
 - General news reposts with no analysis: skip
 
 Return valid JSON array only, no explanation.
-Example: [{"ticker": "NVDA", "conviction": "high", "sentiment": "bullish", "thesis": "...", "direct_quote": "...", "post_index": 0}]
+Example: [{"ticker": "NVDA", "idea_type": "explicit", "conviction": "high", "sentiment": "bullish", "thesis": "...", "direct_quote": "...", "post_index": 0}]
 If nothing found: []
 
 Posts:
@@ -96,6 +97,8 @@ def _save_ideas(ideas_data: list, posts: list) -> int:
             if db.ticker_extracted_for_author_recently(ticker, post["author"]):
                 logger.debug("Skipping %s from %s — already extracted recently", ticker, post["author"])
                 continue
+            raw_type = item.get("idea_type", "explicit")
+            idea_type = "thematic" if raw_type == "thematic" else "explicit"
             db.insert_idea(
                 post_id=post["id"],
                 ticker=ticker,
@@ -103,6 +106,7 @@ def _save_ideas(ideas_data: list, posts: list) -> int:
                 sentiment=item.get("sentiment", "bullish"),
                 thesis=item.get("thesis", ""),
                 quote=item.get("direct_quote", ""),
+                idea_type=idea_type,
             )
             total += 1
         except Exception as e:

@@ -246,13 +246,14 @@ async def add_watchlist_stock(
 async def update_watchlist_notes(ticker: str = Form(...), notes: str = Form("")):
     ticker = ticker.upper().strip()
     db.update_watchlist_stock_notes(ticker, notes.strip())
-    return HTMLResponse(
-        f'<span id="notes-{ticker}" class="mono text-xs" style="color:#5a7a9a;">'
-        f'{notes.strip() or "<span style=\'color:#2a4060;\'>no notes</span>"}</span>'
-        f'<button onclick="showNotesEdit(\'{ticker}\')" class="mono text-xs ml-2" '
-        f'style="color:#2a4060;background:none;border:none;cursor:pointer;" '
-        f'onmouseover="this.style.color=\'#5a7a9a\'" onmouseout="this.style.color=\'#2a4060\'">edit</button>'
+    notes_html = notes.strip() or '<span style="color:#2a4060;">no notes</span>'
+    html = (
+        f'<span id="notes-{ticker}" class="mono text-xs" style="color:#5a7a9a;">{notes_html}</span>'
+        f"<button onclick=\"showNotesEdit('{ticker}')\" class=\"mono text-xs ml-2\""
+        f' style="color:#2a4060;background:none;border:none;cursor:pointer;"'
+        f" onmouseover=\"this.style.color='#5a7a9a'\" onmouseout=\"this.style.color='#2a4060'\">edit</button>"
     )
+    return HTMLResponse(html)
 
 
 @app.post("/watchlist-stocks/refresh-prices", response_class=HTMLResponse)

@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS ideas (
     sentiment TEXT NOT NULL,
     thesis TEXT,
     quote TEXT,
+    idea_type TEXT NOT NULL DEFAULT 'explicit',
     extracted_at TEXT NOT NULL
 );
 
@@ -105,9 +106,13 @@ def init_db() -> None:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     with _conn() as conn:
         conn.executescript(SCHEMA)
-        # Migration: add is_active to existing accounts tables
+        # Migrations
         try:
             conn.execute("ALTER TABLE accounts ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE ideas ADD COLUMN idea_type TEXT NOT NULL DEFAULT 'explicit'")
         except Exception:
             pass
     logger.info("Database initialized at %s", DB_PATH)
@@ -193,12 +198,12 @@ def count_posts_for_date(date_str: str) -> int:
 # --- Ideas ---
 
 def insert_idea(post_id: int, ticker: str, conviction: str, sentiment: str,
-                thesis: str, quote: str) -> int:
+                thesis: str, quote: str, idea_type: str = "explicit") -> int:
     with _conn() as conn:
         cur = conn.execute(
-            """INSERT INTO ideas (post_id, ticker, conviction, sentiment, thesis, quote, extracted_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (post_id, ticker, conviction, sentiment, thesis, quote, _now()),
+            """INSERT INTO ideas (post_id, ticker, conviction, sentiment, thesis, quote, idea_type, extracted_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (post_id, ticker, conviction, sentiment, thesis, quote, idea_type, _now()),
         )
         return cur.lastrowid
 

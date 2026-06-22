@@ -44,6 +44,7 @@ def _build_idea_html(idea: dict, enr: dict) -> str:
     conviction = idea.get("conviction", "")
     thesis = idea.get("thesis", "")
     quote = idea.get("quote", "")
+    idea_type = idea.get("idea_type", "explicit")
     research = enr.get("research_summary", "")
 
     price = _fmt_price(enr.get("current_price"))
@@ -61,6 +62,7 @@ def _build_idea_html(idea: dict, enr: dict) -> str:
     quote_html = f'<blockquote style="margin:10px 0 0 0;padding:8px 12px;border-left:3px solid #334155;color:#94a3b8;font-style:italic;font-size:13px;">"{quote}"</blockquote>' if quote else ""
     research_html = f'<p style="margin:10px 0 0 0;color:#94a3b8;font-size:13px;line-height:1.6;"><strong style="color:#cbd5e1;">Research:</strong> {research}</p>' if research else ""
     freshness_html = f' &nbsp;<span style="background:#1e293b;color:#94a3b8;border:1px solid #334155;padding:1px 6px;border-radius:4px;font-size:11px;">{freshness}</span>' if freshness else ""
+    thematic_html = ' &nbsp;<span style="background:#1e1b4b;color:#a78bfa;border:1px solid #4c1d95;padding:1px 6px;border-radius:4px;font-size:11px;">THEMATIC</span>' if idea_type == "thematic" else ""
 
     return f"""
 <div style="border-bottom:1px solid #1e293b;padding:18px 0;">
@@ -68,6 +70,7 @@ def _build_idea_html(idea: dict, enr: dict) -> str:
     <span style="font-size:18px;font-weight:700;color:#f1f5f9;">{ticker}</span>
     <span style="color:{sentiment_color};font-size:12px;font-weight:600;background:{sentiment_color}22;padding:2px 8px;border-radius:4px;">{sentiment.upper()}</span>
     <span style="color:{conviction_color};font-size:12px;font-weight:600;">{_conviction_label(conviction)}</span>
+    {thematic_html}
     {freshness_html}
     <span style="color:#64748b;font-size:12px;margin-left:auto;">{source_type} · {source_link}</span>
   </div>
@@ -120,7 +123,7 @@ def _build_html_report(ideas: list[dict], stats: dict, today: date) -> str:
 </html>"""
 
 
-def _send_pushover_digest(subject: str, summary: str) -> bool:
+def _send_pushover_digest(subject: str, summary: str, report_id: Optional[int] = None) -> bool:
     cfg = get_config()
     user_key = cfg["pushover"].get("user_key", "")
     api_token = cfg["pushover"].get("api_token", "")
@@ -135,11 +138,15 @@ def _send_pushover_digest(subject: str, summary: str) -> bool:
         "user": user_key,
         "title": subject[:250],
         "message": summary[:1024],
+        "html": "1",
         "priority": 0,
     }
-    if base_url:
-        payload["url"] = f"{base_url.rstrip('/')}/reports"
+    if base_url and report_id:
+        payload["url"] = f"{base_url.rstrip('/')}/reports/{report_id}"
         payload["url_title"] = "View Full Report"
+    elif base_url:
+        payload["url"] = f"{base_url.rstrip('/')}/reports"
+        payload["url_title"] = "View Reports"
 
     try:
         resp = requests.post(PUSHOVER_API, data=payload, timeout=10)
@@ -156,23 +163,41 @@ def _build_pushover_summary(ideas: list[dict], stats: dict, today: date) -> str:
     med  = [i for i in ideas if i.get("conviction") == "medium"]
     low  = [i for i in ideas if i.get("conviction") == "low"]
 
-    lines = [f"{today.strftime('%b %d')} · {len(ideas)} ideas · {stats['sources_active']} sources"]
+    parts: list[str] = []
+    parts.append(
+        f"<b>{today.strftime('%b %d')}</b> · {len(ideas)} ideas · {stats['sources_active']} sources"
+    )
 
     if high:
-        tickers = ", ".join(
-            f"${i['ticker']} ({'↑' if i.get('sentiment') == 'bullish' else '↓'})"
-            for i in high[:5]
-        )
-        lines.append(f"HIGH: {tickers}")
+        parts.append("<b>── HIGH CONVICTION ──</b>")
+        for i in high[:6]:
+            arrow = "↑" if i.get("sentiment") == "bullish" else "↓"
+            thesis = (i.get("thesis") or "").strip()
+            # Strip [Thematic] prefix for compactness
+            thesis = thesis.removeprefix("[Thematic] ")
+            snippet = thesis[:90] + "…" if len(thesis) > 90 else thesis
+            parts.append(f"<b>${i['ticker']}</b> {arrow}  {snippet}")
 
     if med:
-        tickers = ", ".join(f"${i['ticker']}" for i in med[:4])
-        lines.append(f"MED: {tickers}")
+        parts.append("<b>── MEDIUM ──</b>")
+        for i in med[:5]:
+            arrow = "↑" if i.get("sentiment") == "bullish" else "↓"
+            thesis = (i.get("thesis") or "").strip().removeprefix("[Thematic] ")
+            snippet = thesis[:70] + "…" if len(thesis) > 70 else thesis
+            parts.append(f"<b>${i['ticker']}</b> {arrow}  {snippet}")
 
     if low:
-        lines.append(f"LOW: {len(low)} idea{'s' if len(low) != 1 else ''}")
+        tickers = "  ".join(
+            f"${i['ticker']} {'↑' if i.get('sentiment') == 'bullish' else '↓'}"
+            for i in low[:8]
+        )
+        parts.append(f"<b>── LOW ({len(low)}) ──</b>  {tickers}")
 
-    return "\n".join(lines)
+    msg = "\n".join(parts)
+    # Pushover hard cap is 1024 chars; trim to last complete line if over
+    if len(msg) > 1024:
+        msg = msg[:1021] + "…"
+    return msg
 
 
 def generate_and_send_digest() -> Optional[int]:
@@ -186,10 +211,11 @@ def generate_and_send_digest() -> Optional[int]:
 
     subject = f"EquityBuddy — {today.strftime('%Y-%m-%d')} — {len(ideas)} new ideas"
 
-    summary = _build_pushover_summary(ideas, stats, today)
-    _send_pushover_digest(subject, summary)
-
     html = _build_html_report(ideas, stats, today)
     report_id = db.insert_report(subject=subject, html_content=html)
     logger.info("Digest report stored (id=%d)", report_id)
+
+    summary = _build_pushover_summary(ideas, stats, today)
+    _send_pushover_digest(subject, summary, report_id=report_id)
+
     return report_id

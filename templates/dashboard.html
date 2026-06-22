@@ -116,6 +116,12 @@
     <button onclick="setFilter('source','twitter')" class="filter-btn btn-ghost" data-group="source" data-val="twitter">Twitter</button>
     <button onclick="setFilter('source','substack')" class="filter-btn btn-ghost" data-group="source" data-val="substack">Substack</button>
   </div>
+  <div class="flex items-center gap-1.5">
+    <span class="label" style="color:#2a4060;">TYPE</span>
+    <button onclick="setFilter('type','all')" class="filter-btn btn-ghost active" data-group="type" data-val="all">All</button>
+    <button onclick="setFilter('type','explicit')" class="filter-btn btn-ghost" data-group="type" data-val="explicit">Direct</button>
+    <button onclick="setFilter('type','thematic')" class="filter-btn btn-ghost" data-group="type" data-val="thematic" style="color:#a78bfa;">Thematic</button>
+  </div>
   <span id="filter-count" class="mono text-xs ml-auto" style="color:#2a4060;">{{ ideas|length }} ideas</span>
 </div>
 
@@ -140,9 +146,13 @@
           data-conviction="{{ idea.conviction }}"
           data-sentiment="{{ idea.sentiment }}"
           data-source="{{ idea.source_type }}"
+          data-type="{{ idea.idea_type or 'explicit' }}"
           onclick="toggleDetail('detail-{{ idea.id }}')">
         <td onclick="event.stopPropagation()">
           <a href="/ticker/{{ idea.ticker }}" class="ticker" style="color:#00d97e;font-size:0.95rem;text-decoration:none;border-bottom:1px solid rgba(0,217,126,0.3);">{{ idea.ticker }}</a>
+          {% if idea.idea_type == 'thematic' %}
+          <span class="label block mt-0.5" style="color:#7c3aed;font-size:0.6rem;">THEMATIC</span>
+          {% endif %}
         </td>
         <td>
           <span class="mono text-xs" style="color:#4da8ff;">@{{ idea.author }}</span>
@@ -237,7 +247,7 @@
 {% endif %}
 
 <script>
-const _filters = { conviction: 'all', sentiment: 'all', source: 'all' };
+const _filters = { conviction: 'all', sentiment: 'all', source: 'all', type: 'all' };
 
 function setFilter(group, val) {
   _filters[group] = val;
@@ -256,7 +266,8 @@ function applyFilters() {
     const show = (
       (_filters.conviction === 'all' || row.dataset.conviction === _filters.conviction) &&
       (_filters.sentiment === 'all' || row.dataset.sentiment === _filters.sentiment) &&
-      (_filters.source === 'all' || row.dataset.source === _filters.source)
+      (_filters.source === 'all' || row.dataset.source === _filters.source) &&
+      (_filters.type === 'all' || row.dataset.type === _filters.type)
     );
     row.style.display = show ? '' : 'none';
     // Hide the paired detail row too
