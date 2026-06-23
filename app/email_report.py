@@ -200,6 +200,30 @@ def _build_pushover_summary(ideas: list[dict], stats: dict, today: date) -> str:
     return msg
 
 
+def send_test_pushover() -> str:
+    """Send a test Pushover notification using today's real ideas if any exist."""
+    today = date.today()
+    ideas = db.get_ideas_today()
+    stats = db.get_stats()
+
+    cfg = get_config()
+    if not cfg["pushover"].get("user_key") or not cfg["pushover"].get("api_token"):
+        return "error: Pushover is not configured in config.yaml"
+
+    if ideas:
+        subject = f"[TEST] EquityBuddy — {today.strftime('%Y-%m-%d')} — {len(ideas)} ideas"
+        summary = _build_pushover_summary(ideas, stats, today)
+    else:
+        subject = f"[TEST] EquityBuddy — {today.strftime('%Y-%m-%d')}"
+        summary = (
+            f"<b>{today.strftime('%b %d')}</b> · Pushover is working\n"
+            "No ideas extracted today yet — this is just a connectivity test."
+        )
+
+    ok = _send_pushover_digest(subject, summary)
+    return "ok" if ok else "error: Pushover request failed — check logs"
+
+
 def generate_and_send_digest() -> Optional[int]:
     today = date.today()
     ideas = db.get_ideas_today()

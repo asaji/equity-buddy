@@ -322,6 +322,22 @@ async def track_idea(ticker: str = Form(...), idea_id: Optional[int] = Form(None
     )
 
 
+@app.post("/test-pushover", response_class=HTMLResponse)
+async def test_pushover():
+    result = await asyncio.to_thread(email_report.send_test_pushover)
+    if result == "ok":
+        return HTMLResponse(
+            '<div class="text-green-400 p-3 rounded bg-green-900/20 border border-green-700 text-sm">'
+            "Test notification sent — check your phone."
+            "</div>"
+        )
+    return HTMLResponse(
+        f'<div class="text-red-400 p-3 rounded bg-red-900/20 border border-red-700 text-sm">'
+        f"{result}"
+        "</div>"
+    )
+
+
 @app.post("/generate-report", response_class=HTMLResponse)
 async def generate_report(request: Request):
     asyncio.create_task(asyncio.to_thread(email_report.generate_and_send_digest))
@@ -347,9 +363,6 @@ async def settings(request: Request):
 @app.post("/settings", response_class=HTMLResponse)
 async def settings_save(
     request: Request,
-    gemini_api_key: str = Form(""),
-    pushover_user_key: str = Form(""),
-    pushover_api_token: str = Form(""),
     base_url: str = Form(""),
     scrape_interval_hours: int = Form(2),
     digest_time: str = Form("07:00"),
@@ -364,11 +377,6 @@ async def settings_save(
         thresholds = [20, 50, 100]
 
     updates = {
-        "gemini_api_key": gemini_api_key.strip(),
-        "pushover": {
-            "user_key": pushover_user_key.strip(),
-            "api_token": pushover_api_token.strip(),
-        },
         "base_url": base_url.strip(),
         "schedule": {
             "scrape_interval_hours": scrape_interval_hours,
