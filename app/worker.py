@@ -194,6 +194,13 @@ def run_digest() -> None:
         logger.error("Digest failed: %s", e)
 
 
+def run_weekly_digest() -> None:
+    try:
+        email_report.generate_weekly_report()
+    except Exception as e:
+        logger.error("Weekly digest failed: %s", e)
+
+
 def main() -> None:
     load_config()
     db.init_db()
@@ -201,9 +208,12 @@ def main() -> None:
     cfg = get_config()
     interval_hours = cfg["schedule"].get("scrape_interval_hours", 2)
     digest_time = cfg["schedule"].get("digest_time", "07:00")
+    weekly_digest_day = cfg["schedule"].get("weekly_digest_day", "sun")
+    weekly_digest_time = cfg["schedule"].get("weekly_digest_time", "08:00")
     tz = cfg["schedule"].get("timezone", "America/Chicago")
 
     digest_hour, digest_minute = map(int, digest_time.split(":"))
+    weekly_hour, weekly_minute = map(int, weekly_digest_time.split(":"))
 
     scheduler = BlockingScheduler(timezone=tz)
 
@@ -223,9 +233,22 @@ def main() -> None:
         misfire_grace_time=300,
     )
 
+    scheduler.add_job(
+        run_weekly_digest,
+        trigger=CronTrigger(
+            day_of_week=weekly_digest_day,
+            hour=weekly_hour,
+            minute=weekly_minute,
+            timezone=tz,
+        ),
+        id="weekly_digest",
+        replace_existing=True,
+        misfire_grace_time=600,
+    )
+
     logger.info(
-        "Worker started — scraping every %dh, digest at %s %s",
-        interval_hours, digest_time, tz,
+        "Worker started — scraping every %dh, daily digest at %s, weekly digest %s %s %s",
+        interval_hours, digest_time, weekly_digest_day, weekly_digest_time, tz,
     )
 
     run_cycle_sync()

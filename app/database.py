@@ -258,6 +258,19 @@ def get_ideas_for_ticker(ticker: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_ideas_for_period(days: int = 7) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with _conn() as conn:
+        rows = conn.execute(
+            """SELECT i.*, p.author, p.source_type, p.url, p.published_at
+               FROM ideas i JOIN posts p ON i.post_id = p.id
+               WHERE i.extracted_at >= ?
+               ORDER BY i.extracted_at DESC""",
+            (cutoff,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_ideas_since(hours: int = 24) -> list[dict]:
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     with _conn() as conn:

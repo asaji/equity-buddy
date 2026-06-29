@@ -36,6 +36,8 @@ def _defaults() -> dict:
         "schedule": {
             "scrape_interval_hours": 2,
             "digest_time": "07:00",
+            "weekly_digest_day": "sun",
+            "weekly_digest_time": "08:00",
             "timezone": "America/Chicago",
         },
         "conviction_alert_threshold": "high",

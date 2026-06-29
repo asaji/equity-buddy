@@ -68,6 +68,25 @@
         </div>
       </div>
 
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="label block mb-1.5" style="color:#5a7a9a;">Weekly Digest Day</label>
+          <select name="weekly_digest_day"
+                  style="background:#071626;border:1px solid #162740;color:#c8dff5;font-family:'IBM Plex Mono',monospace;font-size:0.85rem;padding:7px 12px;border-radius:2px;outline:none;width:100%;cursor:pointer;">
+            {% for val, label in [('mon','Monday'),('tue','Tuesday'),('wed','Wednesday'),('thu','Thursday'),('fri','Friday'),('sat','Saturday'),('sun','Sunday')] %}
+            <option value="{{ val }}" {% if cfg.schedule.get('weekly_digest_day', 'sun') == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label block mb-1.5" style="color:#5a7a9a;">Weekly Digest Time (HH:MM)</label>
+          <input name="weekly_digest_time" type="text" class="w-full"
+                 value="{{ cfg.schedule.get('weekly_digest_time', '08:00') }}"
+                 placeholder="08:00" />
+          <p class="mono text-xs mt-1" style="color:#2a4060;">Aggregates the past 7 days of ideas</p>
+        </div>
+      </div>
+
       <div>
         <label class="label block mb-1.5" style="color:#5a7a9a;">Timezone</label>
         <input name="timezone" type="text" class="w-full"
@@ -129,6 +148,9 @@
   <div class="flex flex-wrap gap-3">
     <button hx-post="/run-now" hx-target="#run-result" hx-swap="innerHTML" class="btn-ghost">
       ▶ Run Scrape + Extract + Enrich Cycle Now
+    </button>
+    <button hx-post="/generate-weekly-report" hx-target="#run-result" hx-swap="innerHTML" class="btn-ghost">
+      ◈ Generate Weekly Report Now
     </button>
     <button hx-post="/test-pushover" hx-target="#run-result" hx-swap="innerHTML" class="btn-ghost">
       ↗ Test Pushover Notification

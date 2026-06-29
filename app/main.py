@@ -348,6 +348,16 @@ async def generate_report(request: Request):
     )
 
 
+@app.post("/generate-weekly-report", response_class=HTMLResponse)
+async def generate_weekly_report(request: Request):
+    asyncio.create_task(asyncio.to_thread(email_report.generate_weekly_report))
+    return HTMLResponse(
+        '<div class="text-purple-400 p-3 rounded bg-purple-900/20 border border-purple-700 text-sm">'
+        "Weekly report generation started — refresh in a moment to see it."
+        "</div>"
+    )
+
+
 # --- Settings ---
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -366,6 +376,8 @@ async def settings_save(
     base_url: str = Form(""),
     scrape_interval_hours: int = Form(2),
     digest_time: str = Form("07:00"),
+    weekly_digest_day: str = Form("sun"),
+    weekly_digest_time: str = Form("08:00"),
     timezone: str = Form("America/Chicago"),
     conviction_alert_threshold: str = Form("high"),
     gain_thresholds: str = Form("20,50,100"),
@@ -381,6 +393,8 @@ async def settings_save(
         "schedule": {
             "scrape_interval_hours": scrape_interval_hours,
             "digest_time": digest_time.strip(),
+            "weekly_digest_day": weekly_digest_day.strip(),
+            "weekly_digest_time": weekly_digest_time.strip(),
             "timezone": timezone.strip(),
         },
         "conviction_alert_threshold": conviction_alert_threshold,
